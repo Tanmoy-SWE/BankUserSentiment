@@ -1,0 +1,31 @@
+# Environment variables
+.env
+.env.local
+
+# Data files
+*.csv
+*.txt
+data/raw/*
+data/processed/*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Streamlit
+.streamlit/secrets.toml
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Keep empty directories
+!data/raw/.gitkeep
+!data/processed/.gitkeep
