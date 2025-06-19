@@ -10,7 +10,6 @@ try:
     OPENAI_AVAILABLE = True
 except ImportError:
     OPENAI_AVAILABLE = False
-    print("OpenAI not installed. GPT features will be disabled.")
 
 try:
     import nltk
@@ -19,7 +18,6 @@ try:
     NLTK_AVAILABLE = True
 except ImportError:
     NLTK_AVAILABLE = False
-    print("NLTK not installed. Using TextBlob only.")
 
 class DataProcessor:
     def __init__(self, openai_api_key=None):
@@ -40,43 +38,87 @@ class DataProcessor:
             openai.api_key = openai_api_key
             self.use_gpt = True
             
-        # Banking-specific patterns
-        self.banking_keywords = {
-            'service_quality': ['customer service', 'staff', 'support', 'help', 'assistance'],
-            'transaction': ['transfer', 'deposit', 'withdraw', 'payment', 'transaction'],
-            'account': ['account', 'savings', 'checking', 'balance'],
-            'loan': ['loan', 'mortgage', 'credit', 'interest rate'],
-            'digital': ['app', 'online banking', 'mobile', 'website', 'digital'],
-            'branch': ['branch', 'atm', 'location', 'queue', 'waiting']
+        # Banking patterns - INCLUDING OTHER BANKS
+        self.bank_patterns = {
+            'prime_bank': [r'prime\s*bank', r'primebank', r'@primebank', r'prime\s*b\.?'],
+            'eastern_bank': [r'eastern\s*bank', r'ebl', r'@easternbank'],
+            'brac_bank': [r'brac\s*bank', r'@bracbank'],
+            'city_bank': [r'city\s*bank', r'@citybank'],
+            'dutch_bangla': [r'dutch\s*bangla', r'dbbl', r'@dutchbangla']
         }
         
-    def process_csv_files(self, uploaded_files):
-        """Process multiple CSV files"""
-        all_dataframes = []
+    def load_data_from_files(self, csv_files=None, txt_files=None):
+        """Load data from CSV and TXT files"""
+        all_data = []
         
-        for uploaded_file in uploaded_files:
-            try:
-                df = pd.read_csv(uploaded_file)
-                df['source_file'] = uploaded_file.name
-                all_dataframes.append(df)
-            except Exception as e:
-                print(f"Error reading {uploaded_file.name}: {e}")
+        # Load CSV files
+        if csv_files:
+            for file_path in csv_files:
+                try:
+                    df = pd.read_csv(file_path)
+                    df['source_file'] = file_path.split('/')[-1]
+                    all_data.append(df)
+                except Exception as e:
+                    print(f"Error loading {file_path}: {e}")
         
-        if all_dataframes:
-            combined_df = pd.concat(all_dataframes, ignore_index=True)
-            return combined_df
+        # Load TXT files
+        if txt_files:
+            for file_path in txt_files:
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    
+                    # Split by double newlines to separate posts
+                    posts = content.split('\n\n')
+                    
+                    # Create dataframe
+                    df = pd.DataFrame({
+                        'text': [post.strip() for post in posts if post.strip()],
+                        'source_file': file_path.split('/')[-1]
+                    })
+                    all_data.append(df)
+                except Exception as e:
+                    print(f"Error loading {file_path}: {e}")
+        
+        if all_data:
+            return pd.concat(all_data, ignore_index=True)
         return pd.DataFrame()
     
-    def process_txt_file(self, txt_file):
-        """Process text file with reviews"""
-        content = txt_file.read().decode('utf-8')
-        reviews = content.split('\n')
+    def identify_bank(self, text):
+        """Identify which bank is mentioned in the text"""
+        if pd.isna(text):
+            return 'none', []
         
-        df = pd.DataFrame({
-            'text': [review.strip() for review in reviews if review.strip()],
-            'source_file': txt_file.name
-        })
-        return df
+        text_lower = str(text).lower()
+        mentioned_banks = []
+        
+        for bank, patterns in self.bank_patterns.items():
+            for pattern in patterns:
+                if re.search(pattern, text_lower):
+                    mentioned_banks.append(bank)
+                    break
+        
+        if not mentioned_banks:
+            return 'none', []
+        elif len(mentioned_banks) == 1:
+            return mentioned_banks[0], mentioned_banks
+        else:
+            return 'multiple', mentioned_banks
+    
+    def count_bank_mentions(self, text, bank='prime_bank'):
+        """Count mentions of specific bank"""
+        if pd.isna(text):
+            return 0
+        
+        text_lower = str(text).lower()
+        total_mentions = 0
+        
+        if bank in self.bank_patterns:
+            for pattern in self.bank_patterns[bank]:
+                mentions = len(re.findall(pattern, text_lower))
+                total_mentions += mentions
+        
+        return total_mentions
     
     def analyze_sentiment(self, text):
         """Analyze sentiment - use VADER if available, else TextBlob"""
@@ -112,67 +154,71 @@ class DataProcessor:
             return 'Neutral', 0
     
     def detect_emotion(self, text):
-        """Detect emotion in text"""
+        """Detect emotion in text with context"""
         if pd.isna(text):
-            return 'Neutral'
+            return 'Neutral', []
         
         text_lower = str(text).lower()
         
-        # Emotion keywords
+        # Emotion keywords with context
         emotions = {
-            'Joy': ['happy', 'excellent', 'amazing', 'great', 'wonderful', 'fantastic', 'love', 'best', 'thank you'],
-            'Frustration': ['frustrated', 'angry', 'terrible', 'horrible', 'worst', 'hate', 'annoyed', 'disappointed'],
-            'Confusion': ['confused', 'unclear', "don't understand", 'what', 'how', 'why', '?', 'help me']
+            'Joy': {
+                'keywords': ['happy', 'excellent', 'amazing', 'great', 'wonderful', 'fantastic', 'love', 'best', 'thank you', 'appreciate'],
+                'context': 'expressing satisfaction and happiness'
+            },
+            'Frustration': {
+                'keywords': ['frustrated', 'angry', 'terrible', 'horrible', 'worst', 'hate', 'annoyed', 'disappointed', 'pathetic'],
+                'context': 'expressing anger and dissatisfaction'
+            },
+            'Confusion': {
+                'keywords': ['confused', 'unclear', "don't understand", 'what', 'how', 'why', '?', 'help me', 'lost'],
+                'context': 'seeking clarification or expressing confusion'
+            },
+            'Anxiety': {
+                'keywords': ['worried', 'concern', 'anxious', 'nervous', 'scared', 'fear', 'panic', 'urgent'],
+                'context': 'expressing worry or urgency'
+            }
         }
         
         emotion_scores = {}
-        for emotion, keywords in emotions.items():
-            score = sum(keyword in text_lower for keyword in keywords)
+        detected_keywords = {}
+        
+        for emotion, data in emotions.items():
+            keywords_found = [kw for kw in data['keywords'] if kw in text_lower]
+            score = len(keywords_found)
             emotion_scores[emotion] = score
+            if keywords_found:
+                detected_keywords[emotion] = keywords_found
         
         if max(emotion_scores.values()) > 0:
-            return max(emotion_scores, key=emotion_scores.get)
-        return 'Neutral'
+            primary_emotion = max(emotion_scores, key=emotion_scores.get)
+            return primary_emotion, detected_keywords.get(primary_emotion, [])
+        
+        return 'Neutral', []
     
     def categorize_post(self, text):
-        """Categorize post type"""
+        """Categorize post type with reason"""
         if pd.isna(text):
-            return 'Other'
+            return 'Other', 'No text content'
         
         text_lower = str(text).lower()
         
-        if '?' in text_lower or any(word in text_lower for word in ['how', 'what', 'when', 'where']):
-            return 'Inquiry'
-        elif any(word in text_lower for word in ['complaint', 'problem', 'issue', 'bad', 'terrible']):
-            return 'Complaint'
-        elif any(word in text_lower for word in ['thank', 'great', 'excellent', 'love', 'best']):
-            return 'Praise'
+        # Categories with detection logic
+        if '?' in text_lower or any(phrase in text_lower for phrase in ['how do', 'what is', 'when', 'where', 'can i', 'could you']):
+            return 'Inquiry', 'Contains questions or information seeking'
+        elif any(word in text_lower for word in ['complaint', 'problem', 'issue', 'error', 'failed', 'not working', 'terrible', 'worst']):
+            return 'Complaint', 'Contains complaint or problem description'
+        elif any(word in text_lower for word in ['thank', 'great', 'excellent', 'love', 'best', 'appreciate', 'amazing']):
+            return 'Praise', 'Contains positive feedback or appreciation'
+        elif any(word in text_lower for word in ['suggest', 'should', 'could', 'recommend', 'request', 'please add']):
+            return 'Suggestion', 'Contains suggestions or feature requests'
         else:
-            return 'Other'
-    
-    def count_prime_mentions(self, text):
-        """Count Prime Bank mentions"""
-        if pd.isna(text):
-            return 0
-        
-        text_lower = str(text).lower()
-        patterns = [
-            r'prime\s*bank',
-            r'primebank',
-            r'@primebank'
-        ]
-        
-        total_mentions = 0
-        for pattern in patterns:
-            mentions = len(re.findall(pattern, text_lower))
-            total_mentions += mentions
-            
-        return total_mentions
+            return 'Other', 'General discussion or observation'
     
     def process_all_data(self, df):
         """Apply all processing to dataframe"""
         # Find text column
-        text_columns = ['text', 'content', 'message', 'review', 'comment', 'post']
+        text_columns = ['text', 'content', 'message', 'review', 'comment', 'post', 'Text', 'Content']
         text_col = None
         
         for col in text_columns:
@@ -186,20 +232,39 @@ class DataProcessor:
         if 'text' not in df.columns:
             return df
         
-        # Apply all analyses
+        # Identify which bank each post is about
+        df[['primary_bank', 'all_banks_mentioned']] = df['text'].apply(
+            lambda x: pd.Series(self.identify_bank(x))
+        )
+        
+        # Count mentions for each bank
+        df['prime_mentions'] = df['text'].apply(lambda x: self.count_bank_mentions(x, 'prime_bank'))
+        
+        # Apply sentiment analysis
         df[['sentiment', 'polarity']] = df['text'].apply(
             lambda x: pd.Series(self.analyze_sentiment(x))
         )
         
-        df['emotion'] = df['text'].apply(self.detect_emotion)
-        df['category'] = df['text'].apply(self.categorize_post)
-        df['prime_mentions'] = df['text'].apply(self.count_prime_mentions)
+        # Apply emotion detection with keywords
+        df[['emotion', 'emotion_keywords']] = df['text'].apply(
+            lambda x: pd.Series(self.detect_emotion(x))
+        )
         
-        # Calculate viral score
-        df['viral_score'] = df['prime_mentions'] * 10
+        # Categorize posts with reasons
+        df[['category', 'category_reason']] = df['text'].apply(
+            lambda x: pd.Series(self.categorize_post(x))
+        )
+        
+        # Calculate viral score (only for posts with engagement metrics)
+        df['viral_score'] = 0
         if 'likes' in df.columns:
             df['viral_score'] += df['likes'].fillna(0)
         if 'shares' in df.columns:
             df['viral_score'] += df['shares'].fillna(0) * 2
-            
+        if 'comments' in df.columns:
+            df['viral_score'] += df['comments'].fillna(0) * 1.5
+        
+        # Add Prime Bank specific viral score boost
+        df.loc[df['prime_mentions'] > 0, 'viral_score'] *= 1.2
+        
         return df
