@@ -15,9 +15,18 @@ class InsightsGenerator:
         """
         Orchestrator to generate all insights based on the specified dataframes.
         """
-        # Filter for Prime Bank specific data
-        prime_posts_df = posts_df[posts_df['prime_mentions'] > 0]
-        prime_all_text_df = all_text_df[all_text_df['prime_mentions'] > 0]
+        # --- THE DEFINITIVE FIX ---
+        # Before doing anything, ensure the required column exists. If not, create empty frames.
+        if 'prime_mentions' not in posts_df.columns:
+            prime_posts_df = pd.DataFrame()
+        else:
+            prime_posts_df = posts_df[posts_df['prime_mentions'] > 0]
+
+        if 'prime_mentions' not in all_text_df.columns:
+            prime_all_text_df = pd.DataFrame()
+        else:
+            prime_all_text_df = all_text_df[all_text_df['prime_mentions'] > 0]
+        # --- END OF FIX ---
 
         # Requirement 3: Sentiment (Posts Only)
         self.insights['sentiment'] = self._generate_sentiment_insights(prime_posts_df)
@@ -48,7 +57,12 @@ class InsightsGenerator:
     def _generate_sentiment_insights(self, df):
         """Analyzes sentiment on POSTS ONLY and provides detailed summaries."""
         if df.empty:
-            return {'summary': 'No posts found for sentiment analysis.'}
+            return {
+                'summary': 'No posts found for sentiment analysis.',
+                'positive_themes': 'N/A',
+                'negative_themes': 'N/A',
+                'negative_examples': []
+            }
         
         dist = df['sentiment'].value_counts(normalize=True) * 100
         
@@ -69,7 +83,10 @@ class InsightsGenerator:
     def _generate_emotion_insights(self, df):
         """Analyzes emotions on POSTS & COMMENTS and provides detailed summaries."""
         if df.empty:
-            return {'summary': 'No text found for emotion analysis.'}
+            return {
+                'summary': 'No text found for emotion analysis.',
+                'details': {}
+            }
         
         emotion_dist = df['emotion'].value_counts()
         top_emotion = emotion_dist.index[0] if not emotion_dist.empty else "N/A"
@@ -91,7 +108,10 @@ class InsightsGenerator:
     def _generate_category_insights(self, df):
         """Analyzes categories on POSTS & COMMENTS and provides detailed summaries."""
         if df.empty:
-            return {'summary': 'No text found for category analysis.'}
+            return {
+                'summary': 'No text found for category analysis.',
+                'details': {}
+            }
 
         insight_details = {}
         for category in ['Complaint', 'Inquiry', 'Praise', 'Suggestion']:

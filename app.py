@@ -24,51 +24,45 @@ def load_and_process_data():
     """
     DATA_DIR = 'data/uploads'
     
-    # Locate all relevant files
     post_files = glob.glob(os.path.join(DATA_DIR, '*_posts.csv'))
     comment_files = glob.glob(os.path.join(DATA_DIR, '*_comments.csv'))
     txt_files = glob.glob(os.path.join(DATA_DIR, '*.txt'))
 
-    # Helper function to read a list of files into a single DataFrame
     def read_files_to_dataframe(files_list):
         dfs = []
         for f in files_list:
             try:
-                if f.endswith('.csv'):
-                    df = pd.read_csv(f)
-                else: # for .txt files
-                    with open(f, 'r', encoding='utf-8') as file:
-                        content = file.read()
-                    posts = content.split('\n')
-                    df = pd.DataFrame({'text': [p.strip() for p in posts if p.strip()]})
-                
+                df = pd.read_csv(f) if f.endswith('.csv') else pd.DataFrame({'text': [p.strip() for p in open(f, 'r', encoding='utf-8').read().split('\n') if p.strip()]})
                 df['source_file'] = os.path.basename(f)
                 dfs.append(df)
             except Exception as e:
                 st.error(f"Error reading {os.path.basename(f)}: {e}")
-        
-        # Return a single combined DataFrame or an empty one
         return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
 
-    # --- NEW ROBUST LOGIC ---
-    # 1. Combine raw data first
     raw_posts_df = read_files_to_dataframe(post_files)
     raw_comments_df = read_files_to_dataframe(comment_files + txt_files)
 
     processor = DataProcessor()
 
-    # 2. Process only if the dataframe is not empty
     processed_posts_df = processor.process_all_data(raw_posts_df) if not raw_posts_df.empty else pd.DataFrame()
     processed_comments_df = processor.process_all_data(raw_comments_df) if not raw_comments_df.empty else pd.DataFrame()
+    
+    # --- SECONDARY DEFENSIVE CHECK ---
+    # Ensure the columns were actually added. If not, revert to an empty DataFrame.
+    if not processed_posts_df.empty and 'prime_mentions' not in processed_posts_df.columns:
+        st.warning("Could not process 'posts' data correctly. Check data format.")
+        processed_posts_df = pd.DataFrame()
 
-    # 3. Create the 'all_text_df' for combined analysis from processed parts
+    if not processed_comments_df.empty and 'prime_mentions' not in processed_comments_df.columns:
+        st.warning("Could not process 'comments' data correctly. Check data format.")
+        processed_comments_df = pd.DataFrame()
+    # --- END OF CHECK ---
+
     all_text_df = pd.concat([processed_posts_df, processed_comments_df], ignore_index=True)
 
-    # 4. Check if there's any data at all before generating insights
     if all_text_df.empty:
-        return pd.DataFrame(), pd.DataFrame(), None # Return empty structures
+        return pd.DataFrame(), pd.DataFrame(), None
 
-    # Generate insights using the new structure
     insight_gen = InsightsGenerator()
     insights = insight_gen.generate_all_insights(
         posts_df=processed_posts_df, 
@@ -80,17 +74,17 @@ def load_and_process_data():
 # --- Main Application ---
 st.title("🏦 Prime Bank Social Media Analytics")
 
-# Load data
 posts_df, all_text_df, insights = load_and_process_data()
 
 if all_text_df.empty or insights is None:
-    st.error("No data files found or processed in 'data/uploads'. Please ensure your files are named correctly (e.g., 'prime_bank_posts.csv', 'prime_bank_comments.csv').")
+    st.error("No data files found or processed in 'data/uploads'. Please check your files and their naming convention (e.g., 'prime_bank_posts.csv').")
     st.stop()
 
-# Filter for Prime Bank specific data
-prime_posts_df = posts_df[posts_df['prime_mentions'] > 0].copy() if 'prime_mentions' in posts_df else pd.DataFrame()
-prime_all_text_df = all_text_df[all_text_df['prime_mentions'] > 0].copy() if 'prime_mentions' in all_text_df else pd.DataFrame()
+prime_posts_df = posts_df[posts_df['prime_mentions'] > 0].copy() if not posts_df.empty and 'prime_mentions' in posts_df else pd.DataFrame()
+prime_all_text_df = all_text_df[all_text_df['prime_mentions'] > 0].copy() if not all_text_df.empty and 'prime_mentions' in all_text_df else pd.DataFrame()
 
+# The rest of the app.py file remains the same as the previous version...
+# ... (KPI Section, Tabbed Interface, etc.) ...
 
 # --- KPI Section ---
 st.header("📈 Prime Bank Mention KPIs")
