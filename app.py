@@ -1,4 +1,5 @@
 # app.py
+# THIS IS THE START OF THE FILE
 
 import streamlit as st
 import pandas as pd
@@ -32,11 +33,20 @@ def load_and_process_data():
         dfs = []
         for f in files_list:
             try:
-                df = pd.read_csv(f) if f.endswith('.csv') else pd.DataFrame({'text': [p.strip() for p in open(f, 'r', encoding='utf-8').read().split('\n') if p.strip()]})
+                # Use different readers for different file types
+                if f.endswith('.csv'):
+                    df = pd.read_csv(f)
+                else: # for .txt files
+                    with open(f, 'r', encoding='utf-8') as file:
+                        content = file.read()
+                    posts = content.split('\n')
+                    df = pd.DataFrame({'text': [p.strip() for p in posts if p.strip()]})
+                
                 df['source_file'] = os.path.basename(f)
                 dfs.append(df)
             except Exception as e:
                 st.error(f"Error reading {os.path.basename(f)}: {e}")
+        
         return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
 
     raw_posts_df = read_files_to_dataframe(post_files)
@@ -47,8 +57,7 @@ def load_and_process_data():
     processed_posts_df = processor.process_all_data(raw_posts_df) if not raw_posts_df.empty else pd.DataFrame()
     processed_comments_df = processor.process_all_data(raw_comments_df) if not raw_comments_df.empty else pd.DataFrame()
     
-    # --- SECONDARY DEFENSIVE CHECK ---
-    # Ensure the columns were actually added. If not, revert to an empty DataFrame.
+    # Secondary defensive check to ensure columns were added.
     if not processed_posts_df.empty and 'prime_mentions' not in processed_posts_df.columns:
         st.warning("Could not process 'posts' data correctly. Check data format.")
         processed_posts_df = pd.DataFrame()
@@ -56,7 +65,6 @@ def load_and_process_data():
     if not processed_comments_df.empty and 'prime_mentions' not in processed_comments_df.columns:
         st.warning("Could not process 'comments' data correctly. Check data format.")
         processed_comments_df = pd.DataFrame()
-    # --- END OF CHECK ---
 
     all_text_df = pd.concat([processed_posts_df, processed_comments_df], ignore_index=True)
 
@@ -82,9 +90,6 @@ if all_text_df.empty or insights is None:
 
 prime_posts_df = posts_df[posts_df['prime_mentions'] > 0].copy() if not posts_df.empty and 'prime_mentions' in posts_df else pd.DataFrame()
 prime_all_text_df = all_text_df[all_text_df['prime_mentions'] > 0].copy() if not all_text_df.empty and 'prime_mentions' in all_text_df else pd.DataFrame()
-
-# The rest of the app.py file remains the same as the previous version...
-# ... (KPI Section, Tabbed Interface, etc.) ...
 
 # --- KPI Section ---
 st.header("📈 Prime Bank Mention KPIs")
@@ -141,10 +146,15 @@ with tab2:
             with st.expander("Read Emotion Insights"):
                 emotion_insight = insights.get('emotion', {})
                 st.markdown(f"**Summary:** {emotion_insight.get('summary', 'N/A')}")
+                
+                # --- THIS IS THE CORRECTED CODE BLOCK ---
                 for emotion, data in emotion_insight.get('details', {}).items():
                     st.markdown(f"**{emotion} is often about:** {data['themes']}")
-                    st.write(f"Example:")
-                    st.info(f"- \"{data['example'][:150]}...\"")
+                    # Only show the example box if an example exists and is valid
+                    if data.get('example') and data['example'] != "N/A":
+                        st.write("Example:")
+                        st.info(f"- \"{data['example'][:150]}...\"")
+                # --- END OF CORRECTED CODE BLOCK ---
 
         with col2:
             st.subheader("Post & Comment Categories")
@@ -163,6 +173,10 @@ with tab3:
     if not posts_df.empty:
         st.subheader("Processed Posts Data")
         st.dataframe(posts_df)
+    # Check if there are any comments to display
     if not all_text_df.empty and len(all_text_df) > len(posts_df):
         st.subheader("Processed Comments & Reviews Data")
+        # Correctly slice the comments from the combined dataframe
         st.dataframe(all_text_df.iloc[len(posts_df):].reset_index(drop=True))
+
+# THIS IS THE END OF THE FILE

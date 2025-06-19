@@ -39,12 +39,23 @@ class InsightsGenerator:
         
         return self.insights
     
+    # In src/insights_generator.py
+
     def _get_common_words(self, text_series, top_n=5):
         """Helper function to find common keywords in a series of text."""
         if text_series.empty:
             return "No data"
         
-        stop_words = {'the', 'a', 'an', 'is', 'i', 'to', 'for', 'in', 'it', 'and', 'my', 'of', 'prime', 'bank'}
+        # --- NEW, IMPROVED STOP WORD LIST ---
+        stop_words = {
+            'the', 'a', 'an', 'is', 'i', 'to', 'for', 'in', 'it', 'and', 'my', 'of', 'prime', 'bank', 'banker',
+            'was', 'do', 'with', 'that', 'this', 'have', 'has', 'are', 'not',
+            # Common "Banglish" and filler words
+            'er', 'ta', 'ki', 'ami', 'amar', 'kore', 'hocche', 'bhalo', 'asholei', 'onek', 'apnar',
+            'sir', 'bro', 'please', 'help', 'need', 'know', 'want'
+        }
+        # --- END OF FIX ---
+
         all_text = ' '.join(text_series.astype(str).tolist()).lower()
         words = re.findall(r'\b[a-z]{4,}\b', all_text) # Find words with 4+ letters
         filtered_words = [word for word in words if word not in stop_words]

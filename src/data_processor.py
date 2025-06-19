@@ -219,10 +219,16 @@ class DataProcessor:
         else:
             return 'Other', 'General discussion or observation'
     
+    # In src/data_processor.py
+
     def process_all_data(self, df):
         """Apply all processing to dataframe"""
-        # Find text column
-        text_columns = ['text', 'content', 'message', 'review', 'comment', 'post', 'Text', 'Content']
+        # --- NEW, MORE ROBUST TEXT COLUMN FINDER ---
+        # If the dataframe is empty, return it immediately.
+        if df.empty:
+            return df
+
+        text_columns = ['text', 'content', 'message', 'review', 'comment', 'post', 'Text', 'Content', 'Post', 'Review Text']
         text_col = None
         
         for col in text_columns:
@@ -230,11 +236,15 @@ class DataProcessor:
                 text_col = col
                 break
         
-        if text_col and text_col != 'text':
-            df['text'] = df[text_col]
-        
-        if 'text' not in df.columns:
-            return df
+        # If no text column is found, we cannot proceed. Return the empty shell.
+        if not text_col:
+            st.warning(f"Could not find a text column in one of the data sources.")
+            return pd.DataFrame(columns=df.columns) # Return with columns but no data
+
+        # If the found column is not 'text', rename it to 'text' for consistency.
+        if text_col != 'text':
+            df.rename(columns={text_col: 'text'}, inplace=True)
+        # --- END OF FIX ---
         
         # Identify which bank each post is about
         df[['primary_bank', 'all_banks_mentioned']] = df['text'].apply(
@@ -265,10 +275,11 @@ class DataProcessor:
             df['viral_score'] += df['likes'].fillna(0)
         if 'shares' in df.columns:
             df['viral_score'] += df['shares'].fillna(0) * 2
-        if 'comments' in df.columns:
+        if 'comments' in df.columns: # This column name was missing from your old code
             df['viral_score'] += df['comments'].fillna(0) * 1.5
         
         # Add Prime Bank specific viral score boost
-        df.loc[df['prime_mentions'] > 0, 'viral_score'] *= 1.2
+        if not df.empty and 'prime_mentions' in df.columns:
+            df.loc[df['prime_mentions'] > 0, 'viral_score'] *= 1.2
         
         return df
