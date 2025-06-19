@@ -80,7 +80,7 @@ if csv_files or txt_file:
         # Process CSV files
         if csv_files:
             st.write(f"📊 Processing {len(csv_files)} CSV file(s)...")
-            csv_data = processor.process_csv_files(csv_files)
+            csv_data = processor.load_data_from_files(csv_files=csv_files)
             if not csv_data.empty:
                 all_data.append(csv_data)
                 st.success(f"✅ Loaded {len(csv_data)} rows from CSV files")
