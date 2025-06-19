@@ -88,7 +88,7 @@ if csv_files or txt_file:
         # Process TXT file
         if txt_file:
             st.write("📝 Processing TXT file...")
-            txt_data = processor.process_txt_file(txt_file)
+            txt_data = processor.load_data_from_files(txt_files=[txt_file])
             if not txt_data.empty:
                 all_data.append(txt_data)
                 st.success(f"✅ Loaded {len(txt_data)} reviews from TXT file")
