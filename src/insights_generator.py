@@ -1,14 +1,28 @@
+# src/insights_generator.py
+
 import pandas as pd
 from collections import Counter
+import re
 
 class InsightsGenerator:
+    """
+    Analyzes processed data to generate qualitative and quantitative insights
+    in a structured dictionary format, ready for display in the dashboard.
+    """
     def __init__(self):
         self.insights = {}
     
     def generate_all_insights(self, df, prime_df):
-        """Generate comprehensive insights for all analyses"""
+        """
+        Orchestrator method to generate all insights for the dashboard.
         
-        # Overall statistics
+        Args:
+            df (pd.DataFrame): The full DataFrame with all posts.
+            prime_df (pd.DataFrame): A filtered DataFrame with only Prime Bank posts.
+            
+        Returns:
+            dict: A nested dictionary containing all generated insights.
+        """
         total_posts = len(df)
         prime_posts = len(prime_df)
         prime_percentage = (prime_posts / total_posts * 100) if total_posts > 0 else 0
@@ -18,253 +32,183 @@ class InsightsGenerator:
             'context': f"The remaining {total_posts - prime_posts:,} posts mention other banks or general banking topics."
         }
         
-        # Sentiment insights
+        # Generate insights for each section using the Prime Bank data
         self.insights['sentiment'] = self._generate_sentiment_insights(prime_df)
-        
-        # Emotion insights
         self.insights['emotion'] = self._generate_emotion_insights(prime_df)
-        
-        # Category insights
         self.insights['category'] = self._generate_category_insights(prime_df)
-        
-        # Trending topics
         self.insights['topics'] = self._generate_topic_insights(prime_df)
-        
-        # Comparative analysis
-        self.insights['comparison'] = self._generate_comparison_insights(df)
-        
-        # Priority actions
         self.insights['actions'] = self._generate_action_insights(prime_df)
+        
+        # Comparative analysis uses the full dataset
+        self.insights['comparison'] = self._generate_comparison_insights(df)
         
         return self.insights
     
     def _generate_sentiment_insights(self, df):
-        """Generate sentiment-specific insights"""
+        """Generate sentiment-specific insights with examples and context."""
         if len(df) == 0:
-            return {'summary': 'No Prime Bank posts found for sentiment analysis.'}
+            return {
+                'summary': 'No Prime Bank posts found for sentiment analysis.',
+                'positive_context': '', 'negative_context': '', 'neutral_context': '',
+                'examples': {'Positive': [], 'Negative': [], 'Neutral': []}
+            }
         
         sentiment_dist = df['sentiment'].value_counts(normalize=True) * 100
         
-        # Get sample posts for each sentiment
-        sentiment_examples = {}
-        for sentiment in ['Positive', 'Negative', 'Neutral']:
-            examples = df[df['sentiment'] == sentiment]['text'].head(2).tolist()
-            sentiment_examples[sentiment] = examples
-        
-        # Analyze negative posts for common issues
-        negative_posts = df[df['sentiment'] == 'Negative']['text']
-        negative_themes = []
-        if len(negative_posts) > 0:
-            all_negative_text = ' '.join(negative_posts.astype(str).tolist()).lower()
-            if 'wait' in all_negative_text or 'queue' in all_negative_text:
-                negative_themes.append('long wait times')
-            if 'fee' in all_negative_text or 'charge' in all_negative_text:
-                negative_themes.append('fees and charges')
-            if 'app' in all_negative_text or 'online' in all_negative_text:
-                negative_themes.append('digital banking issues')
-            if 'staff' in all_negative_text or 'service' in all_negative_text:
-                negative_themes.append('customer service')
-        
-        insights = {
-            'summary': f"Sentiment breakdown: {sentiment_dist.get('Positive', 0):.1f}% positive, {sentiment_dist.get('Negative', 0):.1f}% negative, {sentiment_dist.get('Neutral', 0):.1f}% neutral.",
-            'positive_context': f"Positive posts ({sentiment_dist.get('Positive', 0):.1f}%) primarily praise customer service, digital banking features, and efficient processes.",
-            'negative_context': f"Negative posts ({sentiment_dist.get('Negative', 0):.1f}%) mainly complain about: {', '.join(negative_themes) if negative_themes else 'various service issues'}.",
-            'neutral_context': f"Neutral posts ({sentiment_dist.get('Neutral', 0):.1f}%) are mostly inquiries about services and general discussions.",
-            'examples': sentiment_examples,
-            'concern_areas': negative_themes
+        # Get up to 3 sample posts for each sentiment
+        sentiment_examples = {
+            s: df[df['sentiment'] == s]['text'].head(3).tolist() 
+            for s in ['Positive', 'Negative', 'Neutral']
         }
         
-        return insights
-    
+        # Analyze themes in negative posts
+        negative_posts_text = ' '.join(df[df['sentiment'] == 'Negative']['text'].astype(str).tolist()).lower()
+        negative_themes = [theme for theme in ['wait times', 'fees', 'charges', 'app issue', 'online banking', 'customer service'] if theme in negative_posts_text]
+
+        # Analyze themes in neutral posts (typically inquiries)
+        neutral_posts_text = ' '.join(df[df['sentiment'] == 'Neutral']['text'].astype(str).tolist()).lower()
+        neutral_themes = [theme for theme in ['how to', 'what is', 'interest rate', 'loan', 'account', 'credit card'] if theme in neutral_posts_text]
+        
+        return {
+            'summary': f"Sentiment Breakdown: {sentiment_dist.get('Positive', 0):.1f}% Positive, {sentiment_dist.get('Negative', 0):.1f}% Negative, {sentiment_dist.get('Neutral', 0):.1f}% Neutral.",
+            'positive_context': "Positive posts often praise specific aspects like 'customer service' and the 'mobile app'.",
+            'negative_context': f"Negative posts frequently mention issues like {', '.join(negative_themes) if negative_themes else 'service delays and technical problems'}.",
+            'neutral_context': f"Neutral posts are primarily informational, often asking about {', '.join(neutral_themes) if neutral_themes else 'general services and account details'}.",
+            'examples': sentiment_examples
+        }
+
     def _generate_emotion_insights(self, df):
-        """Generate emotion-specific insights"""
-        if len(df) == 0:
-            return {'summary': 'No Prime Bank posts found for emotion analysis.'}
-        
+        """Generate emotion-specific insights with examples."""
+        if len(df) == 0 or 'emotion' not in df.columns or df['emotion'].value_counts().empty:
+            return {
+                'summary': 'No Prime Bank posts found for emotion analysis.',
+                'distribution': {}, 'examples': {}, 'recommendation': ''
+            }
+            
         emotion_dist = df['emotion'].value_counts()
-        total_emotional = len(df[df['emotion'] != 'Neutral'])
-        
-        emotion_contexts = {
-            'Joy': 'Customers expressing joy are satisfied with services, particularly praising staff helpfulness and quick problem resolution.',
-            'Frustration': 'Frustrated customers mainly face issues with wait times, technical problems, and unresolved complaints.',
-            'Confusion': 'Confused customers need better information about products, fees, and online banking procedures.',
-            'Anxiety': 'Anxious customers are worried about account security, loan applications, and urgent transaction issues.'
+        top_emotion = emotion_dist.index[0]
+
+        # Get up to 2 examples for each of the top 4 emotions
+        emotion_examples = {
+            emotion: df[df['emotion'] == emotion]['text'].head(2).tolist()
+            for emotion in emotion_dist.head(4).index if emotion != 'Neutral'
         }
         
-        # Get most common emotion keywords
-        emotion_keywords = {}
-        for emotion in ['Joy', 'Frustration', 'Confusion', 'Anxiety']:
-            emotion_posts = df[df['emotion'] == emotion]
-            if len(emotion_posts) > 0:
-                # Flatten all keywords for this emotion
-                all_keywords = []
-                for keywords in emotion_posts['emotion_keywords']:
-                    if isinstance(keywords, list):
-                        all_keywords.extend(keywords)
-                if all_keywords:
-                    emotion_keywords[emotion] = Counter(all_keywords).most_common(3)
-        
-        insights = {
-            'summary': f"{total_emotional} out of {len(df)} Prime Bank posts ({total_emotional/len(df)*100:.1f}%) express clear emotions.",
-            'distribution': {emotion: count for emotion, count in emotion_dist.items()},
-            'contexts': emotion_contexts,
-            'top_emotion': emotion_dist.index[0] if len(emotion_dist) > 0 else 'None',
-            'keywords': emotion_keywords,
+        return {
+            'summary': f"The dominant emotion expressed is '{top_emotion}' with {emotion_dist.iloc[0]} mentions.",
+            'distribution': emotion_dist.to_dict(),
+            'examples': emotion_examples,
             'recommendation': self._get_emotion_recommendation(emotion_dist)
         }
-        
-        return insights
-    
+
     def _generate_category_insights(self, df):
-        """Generate category-specific insights"""
+        """Generate category-specific insights."""
         if len(df) == 0:
-            return {'summary': 'No Prime Bank posts found for category analysis.'}
+            return {'summary': 'No posts found for category analysis.'}
         
         category_dist = df['category'].value_counts()
-        
-        category_insights = {
-            'Inquiry': {
-                'common_topics': ['account opening', 'loan applications', 'online banking setup', 'branch locations'],
-                'action': 'Improve FAQ section and provide clearer information channels'
-            },
-            'Complaint': {
-                'common_topics': ['service delays', 'technical issues', 'hidden fees', 'staff behavior'],
-                'action': 'Establish rapid response team for complaint resolution'
-            },
-            'Praise': {
-                'common_topics': ['helpful staff', 'quick service', 'user-friendly app', 'problem resolution'],
-                'action': 'Recognize and reward mentioned staff members'
-            },
-            'Suggestion': {
-                'common_topics': ['new features', 'branch expansion', 'service improvements', 'digital enhancements'],
-                'action': 'Review suggestions for product development roadmap'
-            }
-        }
-        
-        insights = {
+        return {
             'summary': f"Post categories: {', '.join([f'{cat} ({count})' for cat, count in category_dist.items()])}",
-            'details': category_insights,
-            'urgent_attention': f"{category_dist.get('Complaint', 0)} complaints require immediate attention",
-            'opportunities': f"{category_dist.get('Suggestion', 0)} suggestions for improvement"
+            'distribution': category_dist.to_dict(),
+            'urgent_attention': f"{category_dist.get('Complaint', 0)} complaints require attention.",
+            'opportunities': f"{category_dist.get('Suggestion', 0)} suggestions offer improvement ideas."
         }
-        
-        return insights
-    
+
     def _generate_topic_insights(self, df):
-        """Identify trending topics"""
+        """Identify trending topics by counting keyword occurrences."""
         if len(df) == 0:
-            return {'summary': 'No Prime Bank posts found for topic analysis.'}
+            return {'summary': 'No posts found for topic analysis.'}
         
-        # Combine all text
         all_text = ' '.join(df['text'].astype(str).tolist()).lower()
         
-        # Define topic keywords
         topics = {
-            'Digital Banking': ['app', 'online', 'mobile', 'website', 'internet banking'],
-            'Customer Service': ['staff', 'service', 'help', 'support', 'employee'],
-            'Fees & Charges': ['fee', 'charge', 'cost', 'expensive', 'price'],
-            'Loans': ['loan', 'credit', 'mortgage', 'interest', 'emi'],
-            'ATM & Branch': ['atm', 'branch', 'location', 'machine', 'cash'],
-            'Account Services': ['account', 'savings', 'current', 'balance', 'statement']
+            'Digital Banking': ['app', 'online', 'mobile', 'website', 'internet banking', 'crashing'],
+            'Customer Service': ['staff', 'service', 'help', 'support', 'employee', 'behavior'],
+            'Fees & Charges': ['fee', 'charge', 'cost', 'expensive', 'hidden'],
+            'Loans & Credit': ['loan', 'credit', 'mortgage', 'interest', 'emi', 'card'],
+            'Branch & ATM': ['atm', 'branch', 'location', 'machine', 'cash', 'queue', 'wait']
         }
         
-        topic_counts = {}
-        for topic, keywords in topics.items():
-            count = sum(1 for keyword in keywords if keyword in all_text)
-            if count > 0:
-                topic_counts[topic] = count
-        
+        # Count total occurrences of all keywords for a topic
+        topic_counts = {topic: sum(all_text.count(kw) for kw in keywords) for topic, keywords in topics.items()}
         sorted_topics = sorted(topic_counts.items(), key=lambda x: x[1], reverse=True)
-        
-        insights = {
-            'summary': f"Top discussed topics: {', '.join([f'{topic} ({count} mentions)' for topic, count in sorted_topics[:3]])}",
+        trending_topic = sorted_topics[0][0] if sorted_topics and sorted_topics[0][1] > 0 else 'None'
+
+        return {
+            'summary': f"Top discussed topics are: {', '.join([t[0] for t in sorted_topics[:3]])}.",
             'all_topics': dict(sorted_topics),
-            'trending': sorted_topics[0][0] if sorted_topics else 'None',
-            'recommendation': f"Focus on improving {sorted_topics[0][0].lower()} based on high discussion volume" if sorted_topics else "No clear topic trends"
+            'trending': trending_topic,
+            'recommendation': f"Focus on improving {trending_topic.lower()} due to high discussion volume." if trending_topic != 'None' else "No clear topic trends."
         }
-        
-        return insights
-    
+
     def _generate_comparison_insights(self, df):
-        """Compare Prime Bank with other banks"""
+        """Compare Prime Bank's sentiment with other mentioned banks."""
         bank_sentiment = {}
+        all_banks = df['primary_bank'].unique()
         
-        for bank in ['prime_bank', 'eastern_bank', 'brac_bank', 'city_bank', 'dutch_bangla']:
+        for bank in all_banks:
+            if bank == 'none' or bank == 'multiple':
+                continue
+            
             bank_posts = df[df['primary_bank'] == bank]
-            if len(bank_posts) > 0:
+            if not bank_posts.empty:
                 positive_rate = (bank_posts['sentiment'] == 'Positive').sum() / len(bank_posts) * 100
                 bank_sentiment[bank] = {
                     'posts': len(bank_posts),
                     'positive_rate': positive_rate
                 }
         
-        if 'prime_bank' in bank_sentiment:
-            prime_positive = bank_sentiment['prime_bank']['positive_rate']
-            comparison = "above average" if prime_positive > 50 else "below average"
-            
-            insights = {
-                'summary': f"Prime Bank has {prime_positive:.1f}% positive sentiment, which is {comparison} in the banking sector.",
-                'comparison': bank_sentiment,
-                'recommendation': "Focus on maintaining positive momentum" if prime_positive > 50 else "Urgent improvement needed to match competitor satisfaction levels"
-            }
-        else:
-            insights = {'summary': 'No comparative data available.'}
+        if 'prime_bank' not in bank_sentiment:
+            return {'summary': 'No Prime Bank posts found for comparison.'}
         
-        return insights
-    
+        prime_positive = bank_sentiment['prime_bank']['positive_rate']
+        avg_competitor_rate = pd.Series({b: d['positive_rate'] for b, d in bank_sentiment.items() if b != 'prime_bank'}).mean()
+        
+        comparison = "above" if prime_positive > avg_competitor_rate else "below"
+        
+        return {
+            'summary': f"Prime Bank's positive sentiment ({prime_positive:.1f}%) is {comparison} the competitor average of {avg_competitor_rate:.1f}%.",
+            'comparison': bank_sentiment,
+            'recommendation': "Focus on maintaining positive momentum." if comparison == 'above' else "Urgent improvement needed to match competitor satisfaction."
+        }
+
     def _generate_action_insights(self, df):
-        """Generate actionable insights"""
+        """Generate actionable insights based on high-priority posts."""
         if len(df) == 0:
-            return {'summary': 'No Prime Bank posts found for action analysis.'}
+            return {'summary': 'No posts found for action analysis.'}
         
-        # High priority posts
         high_priority = df[
             (df['sentiment'] == 'Negative') & 
-            (df['emotion'].isin(['Frustration', 'Anxiety'])) &
             (df['category'] == 'Complaint')
         ]
         
-        # Quick wins - positive posts that can be amplified
-        quick_wins = df[
-            (df['sentiment'] == 'Positive') & 
-            (df['category'] == 'Praise')
-        ]
+        quick_wins = df[df['sentiment'] == 'Positive'].nlargest(5, 'viral_score')
         
-        actions = {
+        return {
             'immediate': {
                 'count': len(high_priority),
-                'description': 'High-priority complaints requiring immediate response',
-                'action': 'Contact these customers within 24 hours'
+                'description': 'High-priority complaints (Negative sentiment + Complaint category) require immediate response.',
+                'action': 'Review these posts and contact customers within 24 hours.'
             },
             'quick_wins': {
                 'count': len(quick_wins),
-                'description': 'Positive testimonials for marketing use',
-                'action': 'Share success stories and thank customers publicly'
-            },
-            'strategic': {
-                'description': 'Long-term improvements based on feedback patterns',
-                'actions': [
-                    'Enhance digital banking infrastructure',
-                    'Implement customer service training program',
-                    'Review and simplify fee structure'
-                ]
+                'description': 'Positive testimonials with high viral scores are available for marketing.',
+                'action': 'Amplify these success stories and thank the customers publicly.'
             }
         }
-        
-        return actions
-    
+
     def _get_emotion_recommendation(self, emotion_dist):
-        """Get recommendation based on emotion distribution"""
-        if len(emotion_dist) == 0:
-            return "No emotional data to analyze"
+        """Get a recommendation based on the dominant emotion."""
+        if emotion_dist.empty:
+            return "No emotional data to analyze."
         
         top_emotion = emotion_dist.index[0]
         
         recommendations = {
-            'Joy': "Leverage positive emotions by encouraging happy customers to share testimonials",
-            'Frustration': "Implement rapid response protocol for frustrated customers to prevent escalation",
-            'Confusion': "Create clearer communication materials and improve customer education",
-            'Anxiety': "Provide reassurance through proactive communication about security and processes",
-            'Neutral': "Engage neutral customers with targeted campaigns to create"
+            'Joy': "Leverage positive emotions by encouraging happy customers to share testimonials.",
+            'Frustration': "Implement a rapid response protocol for frustrated customers to prevent escalation.",
+            'Confusion': "Create clearer communication materials and improve the FAQ/help section.",
+            'Anxiety': "Provide reassurance through proactive communication about security and processes.",
+            'Neutral': "Engage neutral customers with targeted campaigns to foster a positive connection."
         }
-        return recommendations.get(top_emotion, "Monitor customer emotions closely")
+        return recommendations.get(top_emotion, "Monitor customer emotions closely.")

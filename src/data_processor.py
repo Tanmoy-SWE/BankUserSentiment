@@ -47,6 +47,10 @@ class DataProcessor:
             'dutch_bangla': [r'dutch\s*bangla', r'dbbl', r'@dutchbangla']
         }
         
+    # src/data_processor.py
+
+# ... (keep existing code) ...
+
     def load_data_from_files(self, csv_files=None, txt_files=None):
         """Load data from CSV and TXT files"""
         all_data = []
@@ -56,7 +60,7 @@ class DataProcessor:
             for file_path in csv_files:
                 try:
                     df = pd.read_csv(file_path)
-                    df['source_file'] = file_path.split('/')[-1]
+                    df['source_file'] = file_path.name # CHANGED: Use .name for Streamlit's UploadedFile object
                     all_data.append(df)
                 except Exception as e:
                     print(f"Error loading {file_path}: {e}")
@@ -65,16 +69,16 @@ class DataProcessor:
         if txt_files:
             for file_path in txt_files:
                 try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        content = f.read()
+                    # Reading from Streamlit's UploadedFile object is slightly different
+                    content = file_path.getvalue().decode("utf-8")
                     
-                    # Split by double newlines to separate posts
-                    posts = content.split('\n\n')
+                    # CHANGED: Split by single newline to treat each line as a post
+                    posts = content.split('\n') 
                     
                     # Create dataframe
                     df = pd.DataFrame({
                         'text': [post.strip() for post in posts if post.strip()],
-                        'source_file': file_path.split('/')[-1]
+                        'source_file': file_path.name # CHANGED: Use .name
                     })
                     all_data.append(df)
                 except Exception as e:
