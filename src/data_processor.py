@@ -1,8 +1,11 @@
+# src/data_processor.py
+
 import pandas as pd
 import re
 from textblob import TextBlob
 import numpy as np
 import json
+import streamlit as st # <-- THIS IS THE FIX. Import Streamlit here.
 
 # Try to import optional dependencies
 try:
@@ -27,7 +30,7 @@ class DataProcessor:
         if NLTK_AVAILABLE:
             try:
                 self.sia = SentimentIntensityAnalyzer()
-            except:
+            except Exception:
                 self.sia = None
         else:
             self.sia = None
@@ -47,38 +50,30 @@ class DataProcessor:
             'dutch_bangla': [r'dutch\s*bangla', r'dbbl', r'@dutchbangla']
         }
         
-    # src/data_processor.py
-
-# ... (keep existing code) ...
-
     def load_data_from_files(self, csv_files=None, txt_files=None):
         """Load data from CSV and TXT files"""
         all_data = []
         
-        # Load CSV files
         if csv_files:
             for file_path in csv_files:
                 try:
                     df = pd.read_csv(file_path)
-                    df['source_file'] = file_path.name # CHANGED: Use .name for Streamlit's UploadedFile object
+                    df['source_file'] = file_path.split('/')[-1]
                     all_data.append(df)
                 except Exception as e:
                     print(f"Error loading {file_path}: {e}")
         
-        # Load TXT files
         if txt_files:
             for file_path in txt_files:
                 try:
-                    # Reading from Streamlit's UploadedFile object is slightly different
-                    content = file_path.getvalue().decode("utf-8")
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
                     
-                    # CHANGED: Split by single newline to treat each line as a post
-                    posts = content.split('\n') 
+                    posts = content.split('\n')
                     
-                    # Create dataframe
                     df = pd.DataFrame({
                         'text': [post.strip() for post in posts if post.strip()],
-                        'source_file': file_path.name # CHANGED: Use .name
+                        'source_file': file_path.split('/')[-1]
                     })
                     all_data.append(df)
                 except Exception as e:
@@ -131,7 +126,6 @@ class DataProcessor:
         
         text_str = str(text)
         
-        # Try VADER first if available
         if self.sia:
             scores = self.sia.polarity_scores(text_str)
             compound = scores['compound']
@@ -143,7 +137,6 @@ class DataProcessor:
             else:
                 return 'Neutral', compound
         
-        # Fallback to TextBlob
         try:
             blob = TextBlob(text_str)
             polarity = blob.sentiment.polarity
@@ -154,7 +147,7 @@ class DataProcessor:
                 return 'Negative', polarity
             else:
                 return 'Neutral', polarity
-        except:
+        except Exception:
             return 'Neutral', 0
     
     def detect_emotion(self, text):
@@ -164,24 +157,11 @@ class DataProcessor:
         
         text_lower = str(text).lower()
         
-        # Emotion keywords with context
         emotions = {
-            'Joy': {
-                'keywords': ['happy', 'excellent', 'amazing', 'great', 'wonderful', 'fantastic', 'love', 'best', 'thank you', 'appreciate'],
-                'context': 'expressing satisfaction and happiness'
-            },
-            'Frustration': {
-                'keywords': ['frustrated', 'angry', 'terrible', 'horrible', 'worst', 'hate', 'annoyed', 'disappointed', 'pathetic'],
-                'context': 'expressing anger and dissatisfaction'
-            },
-            'Confusion': {
-                'keywords': ['confused', 'unclear', "don't understand", 'what', 'how', 'why', '?', 'help me', 'lost'],
-                'context': 'seeking clarification or expressing confusion'
-            },
-            'Anxiety': {
-                'keywords': ['worried', 'concern', 'anxious', 'nervous', 'scared', 'fear', 'panic', 'urgent'],
-                'context': 'expressing worry or urgency'
-            }
+            'Joy': {'keywords': ['happy', 'excellent', 'amazing', 'great', 'wonderful', 'fantastic', 'love', 'best', 'thank you', 'appreciate']},
+            'Frustration': {'keywords': ['frustrated', 'angry', 'terrible', 'horrible', 'worst', 'hate', 'annoyed', 'disappointed', 'pathetic']},
+            'Confusion': {'keywords': ['confused', 'unclear', "don't understand", 'what', 'how', 'why', '?', 'help me', 'lost']},
+            'Anxiety': {'keywords': ['worried', 'concern', 'anxious', 'nervous', 'scared', 'fear', 'panic', 'urgent']}
         }
         
         emotion_scores = {}
@@ -207,7 +187,6 @@ class DataProcessor:
         
         text_lower = str(text).lower()
         
-        # Categories with detection logic
         if '?' in text_lower or any(phrase in text_lower for phrase in ['how do', 'what is', 'when', 'where', 'can i', 'could you']):
             return 'Inquiry', 'Contains questions or information seeking'
         elif any(word in text_lower for word in ['complaint', 'problem', 'issue', 'error', 'failed', 'not working', 'terrible', 'worst']):
@@ -219,12 +198,8 @@ class DataProcessor:
         else:
             return 'Other', 'General discussion or observation'
     
-    # In src/data_processor.py
-
     def process_all_data(self, df):
         """Apply all processing to dataframe"""
-        # --- NEW, MORE ROBUST TEXT COLUMN FINDER ---
-        # If the dataframe is empty, return it immediately.
         if df.empty:
             return df
 
@@ -236,49 +211,27 @@ class DataProcessor:
                 text_col = col
                 break
         
-        # If no text column is found, we cannot proceed. Return the empty shell.
         if not text_col:
-            st.warning(f"Could not find a text column in one of the data sources.")
-            return pd.DataFrame(columns=df.columns) # Return with columns but no data
+            st.warning("Could not find a text column in one of the data sources.")
+            return pd.DataFrame(columns=df.columns)
 
-        # If the found column is not 'text', rename it to 'text' for consistency.
         if text_col != 'text':
             df.rename(columns={text_col: 'text'}, inplace=True)
-        # --- END OF FIX ---
         
-        # Identify which bank each post is about
-        df[['primary_bank', 'all_banks_mentioned']] = df['text'].apply(
-            lambda x: pd.Series(self.identify_bank(x))
-        )
-        
-        # Count mentions for each bank
+        df[['primary_bank', 'all_banks_mentioned']] = df['text'].apply(lambda x: pd.Series(self.identify_bank(x)))
         df['prime_mentions'] = df['text'].apply(lambda x: self.count_bank_mentions(x, 'prime_bank'))
+        df[['sentiment', 'polarity']] = df['text'].apply(lambda x: pd.Series(self.analyze_sentiment(x)))
+        df[['emotion', 'emotion_keywords']] = df['text'].apply(lambda x: pd.Series(self.detect_emotion(x)))
+        df[['category', 'category_reason']] = df['text'].apply(lambda x: pd.Series(self.categorize_post(x)))
         
-        # Apply sentiment analysis
-        df[['sentiment', 'polarity']] = df['text'].apply(
-            lambda x: pd.Series(self.analyze_sentiment(x))
-        )
-        
-        # Apply emotion detection with keywords
-        df[['emotion', 'emotion_keywords']] = df['text'].apply(
-            lambda x: pd.Series(self.detect_emotion(x))
-        )
-        
-        # Categorize posts with reasons
-        df[['category', 'category_reason']] = df['text'].apply(
-            lambda x: pd.Series(self.categorize_post(x))
-        )
-        
-        # Calculate viral score (only for posts with engagement metrics)
         df['viral_score'] = 0
         if 'likes' in df.columns:
             df['viral_score'] += df['likes'].fillna(0)
         if 'shares' in df.columns:
             df['viral_score'] += df['shares'].fillna(0) * 2
-        if 'comments' in df.columns: # This column name was missing from your old code
+        if 'comments' in df.columns:
             df['viral_score'] += df['comments'].fillna(0) * 1.5
         
-        # Add Prime Bank specific viral score boost
         if not df.empty and 'prime_mentions' in df.columns:
             df.loc[df['prime_mentions'] > 0, 'viral_score'] *= 1.2
         
