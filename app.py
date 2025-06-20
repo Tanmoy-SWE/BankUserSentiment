@@ -1,5 +1,3 @@
-# app.py
-
 import streamlit as st
 import pandas as pd
 import os
@@ -19,7 +17,7 @@ st.set_page_config(
 def find_text_column(df):
     if df.empty: return None
     text_columns = [
-        'text', 'Text', 'content', 'Content', 'message', 'Message', 
+        'text', 'Text', 'content', 'Content', 'message', 'Message',
         'review', 'Review', 'comment', 'Comment', 'post', 'Post',
         'review_text', 'Review Text', 'post_text', 'Post Text',
         'comment_text', 'Comment Text', 'description', 'Description'
@@ -81,7 +79,6 @@ def load_and_process_data():
     processed_posts_df = processor.process_all_data(raw_posts_df)
     processed_comments_df = processor.process_all_data(raw_comments_df)
     
-    # Preserve the URL column if it exists
     all_text_df = pd.concat([processed_posts_df, processed_comments_df], ignore_index=True)
     if all_text_df.empty: return pd.DataFrame(), pd.DataFrame(), None
 
@@ -119,7 +116,7 @@ st.markdown("---")
 
 # --- Tabbed Interface ---
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "Sentiment & Virality (Posts)", 
+    "Sentiment & Virality (Posts)",
     "Emotion & Categories (All Text)",
     "Strategic Overview",
     "Action Items",
@@ -174,7 +171,8 @@ with tab3:
         if geo_map:
             st.plotly_chart(geo_map, use_container_width=True)
         else:
-            st.info("No 'location' column found in data to generate map.")
+            # This message is now handled inside create_geolocation_map
+            pass
 
 # --- Tab 4: Action Items ---
 with tab4:
@@ -183,7 +181,7 @@ with tab4:
 
     if not prime_all_text_df.empty:
         attention_df = prime_all_text_df[
-            (prime_all_text_df['sentiment'] == 'Negative') | 
+            (prime_all_text_df['sentiment'] == 'Negative') |
             (prime_all_text_df['category'].isin(['Complaint', 'Inquiry']))
         ].copy()
 
@@ -195,43 +193,34 @@ with tab4:
             )
             attention_df.sort_values(by='priority_score', ascending=False, inplace=True)
             
-            # --- MODIFICATION START ---
-            # Check if a URL column is available for linking
-            has_urls = 'url' in attention_df.columns
-
-            if has_urls:
-                # Prepare the table in Markdown to allow for custom HTML links
-                headers = ["Post/Comment", "Sentiment", "Category", "Emotion", "Viral Score"]
-                md_table = f"| {' | '.join(headers)} |\n"
-                md_table += f"|{'|'.join(['---'] * len(headers))}|\n"
-
-                for row in attention_df.itertuples():
-                    # Sanitize text to prevent breaking the table (e.g., remove pipe characters)
-                    text = str(row.text).replace('|', '\|')
-                    
-                    # Make text clickable if URL exists and is valid, otherwise just display text
-                    url = getattr(row, 'url', None)
-                    if pd.notna(url) and str(url).startswith('http'):
-                        # Use HTML for target="_blank" to open in a new tab
-                        linked_text = f'<a href="{url}" target="_blank" style="text-decoration:none; color:inherit;">{text}</a>'
-                    else:
-                        linked_text = text
-
-                    viral_score = getattr(row, 'viral_score', 0)
-                    
-                    # Build the table row
-                    md_table += f"| {linked_text} | {row.sentiment} | {row.category} | {row.emotion} | {viral_score:.0f} |\n"
-                
-                # Display the markdown table with HTML links
-                st.markdown(md_table, unsafe_allow_html=True)
-
-            else:
-                # Fallback to the original st.dataframe if no 'url' column is found
-                st.dataframe(attention_df[[
-                    'text', 'sentiment', 'category', 'emotion', 'viral_score'
-                ]], use_container_width=True)
-            # --- MODIFICATION END ---
+            # Define columns to display initially
+            display_columns = ['text', 'sentiment', 'category', 'emotion', 'viral_score']
             
+            # Check for a link column ('link' or 'url')
+            link_col = None
+            if 'link' in attention_df.columns:
+                link_col = 'link'
+            elif 'url' in attention_df.columns:
+                link_col = 'url'
+            
+            # Configure the dataframe display
+            column_config = {}
+            if link_col:
+                # Add the link column to the list of displayed columns
+                display_columns.insert(1, link_col)
+                # Configure the link column to be clickable
+                column_config[link_col] = st.column_config.LinkColumn(
+                    "Source Link",
+                    display_text="Open Post ↗"
+                )
+            
+            # Display the dataframe with or without the link column
+            st.dataframe(
+                attention_df[display_columns],
+                use_container_width=True,
+                column_config=column_config,
+                hide_index=True  # Hiding the index for a cleaner look
+            )
         else:
             st.success("✅ No negative comments or inquiries found that require attention.")
     else:
