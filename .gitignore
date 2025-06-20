@@ -2,11 +2,18 @@
 .env
 .env.local
 
-# Data files
+# Data files (general exclusion)
 *.csv
 *.txt
 data/raw/*
 data/processed/*
+
+# BUT include these specific files for deployment
+!data/uploads/other_banks_comments.csv
+!data/uploads/other_banks_posts.csv
+!data/uploads/Prime_bank_Review_posts_manual.txt
+!data/uploads/prime_bank_comments.csv
+!data/uploads/prime_bank_posts.csv
 
 # Python
 __pycache__/
