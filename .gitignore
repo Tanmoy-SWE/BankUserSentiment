@@ -1,38 +1,12 @@
-# Environment variables
-.env
-.env.local
+# .gitignore
 
-# Data files (general exclusion)
-*.csv
-*.txt
-data/raw/*
-data/processed/*
+# Ignore the backup folder with real data
+_real_data_backup/
 
-# BUT include these specific files for deployment
-!data/uploads/other_banks_comments.csv
-!data/uploads/other_banks_posts.csv
-!data/uploads/Prime_bank_Review_posts_manual.txt
-!data/uploads/prime_bank_comments.csv
-!data/uploads/prime_bank_posts.csv
-
-# Python
+# Ignore Python cache and environment files
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
+*.pyc
+.env
 
-# Streamlit
-.streamlit/secrets.toml
-
-# IDE
-.vscode/
-.idea/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Keep empty directories
-!data/raw/.gitkeep
-!data/processed/.gitkeep
+# You can also ignore the local Streamlit config if you have one
+.streamlit/config.toml
