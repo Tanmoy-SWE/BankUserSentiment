@@ -5,7 +5,7 @@ import re
 from textblob import TextBlob
 import numpy as np
 import json
-import streamlit as st 
+import streamlit as st
 
 try:
     import openai
@@ -25,7 +25,6 @@ class DataProcessor:
     def __init__(self, openai_api_key=None):
         self.processed_data = None
         
-        
         if NLTK_AVAILABLE:
             try:
                 self.sia = SentimentIntensityAnalyzer()
@@ -34,7 +33,6 @@ class DataProcessor:
         else:
             self.sia = None
             
-        
         self.use_gpt = False
         if openai_api_key and OPENAI_AVAILABLE:
             openai.api_key = openai_api_key
@@ -186,7 +184,7 @@ class DataProcessor:
         
         text_lower = str(text).lower()
         
-        if '?' in text_lower or any(phrase in text_lower for phrase in ['how do', 'what is', 'when', 'where', 'can i', 'could you']):
+        if '?' in text_lower or any(phrase in text_lower for phrase in ['how do', 'what is', 'when', 'where', 'can i', 'could you', 'explain']):
             return 'Inquiry', 'Contains questions or information seeking'
         elif any(word in text_lower for word in ['complaint', 'problem', 'issue', 'error', 'failed', 'not working', 'terrible', 'worst']):
             return 'Complaint', 'Contains complaint or problem description'
@@ -222,6 +220,14 @@ class DataProcessor:
         df[['sentiment', 'polarity']] = df['text'].apply(lambda x: pd.Series(self.analyze_sentiment(x)))
         df[['emotion', 'emotion_keywords']] = df['text'].apply(lambda x: pd.Series(self.detect_emotion(x)))
         df[['category', 'category_reason']] = df['text'].apply(lambda x: pd.Series(self.categorize_post(x)))
+        
+        # --- START OF FIX ---
+        # This is the new, crucial part.
+        # It corrects the sentiment for any post that was categorized as an 'Inquiry'.
+        # This fixes the issue where questions were incorrectly marked as 'Positive'.
+        df.loc[df['category'] == 'Inquiry', 'sentiment'] = 'Neutral'
+        df.loc[df['category'] == 'Inquiry', 'polarity'] = 0.0
+        # --- END OF FIX ---
         
         df['viral_score'] = 0
         if 'likes' in df.columns:
