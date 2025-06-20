@@ -49,7 +49,7 @@ Love the new features in Prime Bank online banking.
 Why does Prime Bank charge so many fees?
 BRAC Bank is also a good option for students."""
 
-# Save as a file with "comment" in the name
+
 comments_filepath = os.path.join(UPLOAD_DIR, 'test_review_comments.txt')
 with open(comments_filepath, 'w') as f:
     f.write(reviews)

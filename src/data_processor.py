@@ -5,9 +5,8 @@ import re
 from textblob import TextBlob
 import numpy as np
 import json
-import streamlit as st # <-- THIS IS THE FIX. Import Streamlit here.
+import streamlit as st 
 
-# Try to import optional dependencies
 try:
     import openai
     OPENAI_AVAILABLE = True
@@ -26,7 +25,7 @@ class DataProcessor:
     def __init__(self, openai_api_key=None):
         self.processed_data = None
         
-        # Initialize VADER if available
+        
         if NLTK_AVAILABLE:
             try:
                 self.sia = SentimentIntensityAnalyzer()
@@ -35,7 +34,7 @@ class DataProcessor:
         else:
             self.sia = None
             
-        # Set up OpenAI if key provided and library available
+        
         self.use_gpt = False
         if openai_api_key and OPENAI_AVAILABLE:
             openai.api_key = openai_api_key

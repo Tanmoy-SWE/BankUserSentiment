@@ -15,8 +15,7 @@ class InsightsGenerator:
         """
         Orchestrator to generate all insights based on the specified dataframes.
         """
-        # --- THE DEFINITIVE FIX ---
-        # Before doing anything, ensure the required column exists. If not, create empty frames.
+        
         if 'prime_mentions' not in posts_df.columns:
             prime_posts_df = pd.DataFrame()
         else:
@@ -50,7 +49,7 @@ class InsightsGenerator:
         stop_words = {
             'the', 'a', 'an', 'is', 'i', 'to', 'for', 'in', 'it', 'and', 'my', 'of', 'prime', 'bank', 'banker',
             'was', 'do', 'with', 'that', 'this', 'have', 'has', 'are', 'not',
-            # Common "Banglish" and filler words
+            # Common "Latinized Bangla" and filler words
             'er', 'ta', 'ki', 'ami', 'amar', 'kore', 'hocche', 'bhalo', 'asholei', 'onek', 'apnar',
             'sir', 'bro', 'please', 'help', 'need', 'know', 'want'
         }
