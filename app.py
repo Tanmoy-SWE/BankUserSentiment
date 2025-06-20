@@ -174,7 +174,7 @@ with tab3:
             # This message is now handled inside create_geolocation_map
             pass
 
-# --- Tab 4: Action Items ---
+# --- Tab 4: Action Items (MODIFIED FOR RELIABLE LINKS) ---
 with tab4:
     st.header("Posts & Comments That Need Attention")
     st.write("A prioritized list of negative or inquiry-based comments mentioning Prime Bank.")
@@ -193,6 +193,8 @@ with tab4:
             )
             attention_df.sort_values(by='priority_score', ascending=False, inplace=True)
             
+            # --- START: NEW, MORE RELIABLE LINK METHOD ---
+            
             # Define columns to display initially
             display_columns = ['text', 'sentiment', 'category', 'emotion', 'viral_score']
             
@@ -202,25 +204,24 @@ with tab4:
                 link_col = 'link'
             elif 'url' in attention_df.columns:
                 link_col = 'url'
-            
-            # Configure the dataframe display
-            column_config = {}
+
+            # If a link column exists, create a new column with Markdown links
             if link_col:
-                # Add the link column to the list of displayed columns
-                display_columns.insert(1, link_col)
-                # Configure the link column to be clickable
-                column_config[link_col] = st.column_config.LinkColumn(
-                    "Source Link",
-                    display_text="Open Post ↗"
+                # Create a new column with the full Markdown string
+                attention_df['Source'] = attention_df[link_col].apply(
+                    lambda url: f"[Open Post ↗]({url})" if pd.notna(url) else "No Link"
                 )
+                # Add the new 'Source' column to the front of our display list
+                display_columns.insert(1, 'Source')
             
-            # Display the dataframe with or without the link column
+            # Display the dataframe. Streamlit will automatically render the Markdown.
             st.dataframe(
                 attention_df[display_columns],
                 use_container_width=True,
-                column_config=column_config,
-                hide_index=True  # Hiding the index for a cleaner look
+                hide_index=True
             )
+            # --- END: NEW, MORE RELIABLE LINK METHOD ---
+
         else:
             st.success("✅ No negative comments or inquiries found that require attention.")
     else:
