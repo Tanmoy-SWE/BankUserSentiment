@@ -1,5 +1,3 @@
-# app.py
-
 import streamlit as st
 import pandas as pd
 import os
@@ -21,7 +19,8 @@ st.set_page_config(
 
 # --- Helper function to identify text column ---
 def find_text_column(df):
-    if df.empty: return None
+    if df.empty:
+        return None
     text_columns = [
         'text', 'Text', 'content', 'Content', 'message', 'Message',
         'review', 'Review', 'comment', 'Comment', 'post', 'Post',
@@ -29,27 +28,38 @@ def find_text_column(df):
         'comment_text', 'Comment Text', 'description', 'Description'
     ]
     for col in text_columns:
-        if col in df.columns: return col
+        if col in df.columns:
+            return col
     for col in df.columns:
         col_lower = col.lower()
-        if any(keyword in col_lower for keyword in ['text', 'content', 'review', 'comment', 'post']): return col
+        if any(keyword in col_lower for keyword in ['text', 'content', 'review', 'comment', 'post']):
+            return col
     for col in df.columns:
         if df[col].dtype == 'object':
             sample = df[col].dropna().head()
             if not sample.empty:
                 try:
-                    if sample.astype(str).str.len().mean() > 20: return col
-                except: continue
+                    if sample.astype(str).str.len().mean() > 20:
+                        return col
+                except:
+                    continue
     return None
 
 # --- Caching for Performance ---
 @st.cache_data
 def load_and_process_data():
     DATA_DIR = 'data/uploads'
-    if not os.path.exists(DATA_DIR): os.makedirs(DATA_DIR)
-    
+    PERFECTED_DATA_DIR = 'perfected_data'  # New folder for perfected data
+    if not os.path.exists(DATA_DIR):
+        os.makedirs(DATA_DIR)
+    if not os.path.exists(PERFECTED_DATA_DIR):
+        os.makedirs(PERFECTED_DATA_DIR)
+
     all_files = glob.glob(os.path.join(DATA_DIR, '*'))
-    if not all_files: return pd.DataFrame(), pd.DataFrame(), None
+    perfected_data_file = os.path.join(PERFECTED_DATA_DIR, 'all_posts_with_comments.txt')
+
+    if not all_files and not os.path.exists(perfected_data_file):
+        return pd.DataFrame(), pd.DataFrame(), None, pd.DataFrame()
 
     post_files = [f for f in all_files if 'post' in os.path.basename(f).lower() and f.endswith('.csv')]
     comment_files = [f for f in all_files if 'comment' in os.path.basename(f).lower() and f.endswith('.csv')]
@@ -62,56 +72,80 @@ def load_and_process_data():
             try:
                 if f.endswith('.csv'):
                     df = pd.read_csv(f, on_bad_lines='skip')
-                else: # txt
+                else:  # txt
                     with open(f, 'r', encoding='utf-8') as file:
                         df = pd.DataFrame({'text': [p.strip() for p in file.read().split('\n') if p.strip()]})
                 
                 text_col = find_text_column(df)
-                if not text_col: continue
-                if text_col != 'text': df = df.rename(columns={text_col: 'text'})
+                if not text_col:
+                    continue
+                if text_col != 'text':
+                    df = df.rename(columns={text_col: 'text'})
                 
                 df['source_file'] = os.path.basename(f)
                 df['file_type'] = file_type
                 df = df[df['text'].notna() & (df['text'].str.strip() != '')]
-                if not df.empty: dfs.append(df)
+                if not df.empty:
+                    dfs.append(df)
             except Exception as e:
                 st.error(f"Error reading {os.path.basename(f)}: {e}")
         return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
 
+    # Load regular data for general insights
     raw_posts_df = read_files(post_files + other_csv_files, 'post')
     raw_comments_df = read_files(comment_files + txt_files, 'comment')
 
+    # Load perfected data specifically for AI recommendations
+    perfected_df = pd.DataFrame()
+    if os.path.exists(perfected_data_file):
+        try:
+            with open(perfected_data_file, 'r', encoding='utf-8') as f:
+                perfected_df = pd.DataFrame({'text': [p.strip() for p in f.read().split('\n') if p.strip()]})
+            perfected_df['source_file'] = 'all_posts_with_comments.txt'
+            perfected_df['file_type'] = 'perfected'
+            perfected_df = perfected_df[perfected_df['text'].notna() & (perfected_df['text'].str.strip() != '')]
+        except Exception as e:
+            st.error(f"Error reading perfected data file: {e}")
+
     # --- Pass the API key from your .env file to the processors ---
     openai_key = os.getenv("OPENAI_API_KEY")
-    
+
     processor = DataProcessor(openai_api_key=openai_key)
     processed_posts_df = processor.process_all_data(raw_posts_df)
     processed_comments_df = processor.process_all_data(raw_comments_df)
-    
+    processed_perfected_df = processor.process_all_data(perfected_df) if not perfected_df.empty else pd.DataFrame()
+
     all_text_df = pd.concat([processed_posts_df, processed_comments_df], ignore_index=True)
-    if all_text_df.empty: return pd.DataFrame(), pd.DataFrame(), None
+    if all_text_df.empty:
+        return pd.DataFrame(), pd.DataFrame(), None, pd.DataFrame()
 
     insight_gen = InsightsGenerator(openai_api_key=openai_key)
     insights = insight_gen.generate_all_insights(posts_df=processed_posts_df, all_text_df=all_text_df)
-    
-    # Generate AI Recommendations
-    prime_all_text_df = all_text_df[all_text_df['prime_mentions'] > 0].copy() if 'prime_mentions' in all_text_df.columns else pd.DataFrame()
-    if not prime_all_text_df.empty:
-        insights['ai_recommendations'] = insight_gen.generate_ai_recommendations(prime_all_text_df)
-    
-    return processed_posts_df, all_text_df, insights
+
+    # Generate AI Recommendations using perfected data if available
+    prime_perfected_df = processed_perfected_df[processed_perfected_df['prime_mentions'] > 0].copy() if 'prime_mentions' in processed_perfected_df.columns and not processed_perfected_df.empty else pd.DataFrame()
+    if not prime_perfected_df.empty:
+        insights['ai_recommendations'] = insight_gen.generate_ai_recommendations(prime_perfected_df)
+    else:
+        prime_all_text_df = all_text_df[all_text_df['prime_mentions'] > 0].copy() if 'prime_mentions' in all_text_df.columns else pd.DataFrame()
+        if not prime_all_text_df.empty:
+            insights['ai_recommendations'] = insight_gen.generate_ai_recommendations(prime_all_text_df)
+        else:
+            insights['ai_recommendations'] = {}
+
+    return processed_posts_df, all_text_df, insights, processed_perfected_df
 
 # --- Main Application ---
 st.title("🏦 Prime Bank Social Media Analytics")
 
-posts_df, all_text_df, insights = load_and_process_data()
+posts_df, all_text_df, insights, perfected_df = load_and_process_data()
 
-if all_text_df.empty or insights is None:
-    st.error("No data files found or processed in 'data/uploads'. Please add CSV or TXT files.")
-    st.info("Ensure filenames contain 'post' for post data or 'comment' for comment data for best results.")
+if all_text_df.empty and perfected_df.empty or insights is None:
+    st.error("No data files found or processed in 'data/uploads' or 'perfected_data'. Please add CSV or TXT files.")
+    st.info("Ensure filenames contain 'post' for post data or 'comment' for comment data for best results, and ensure 'all_posts_with_comments.txt' exists in 'perfected_data' for AI recommendations.")
     st.stop()
 
-# Filter for Prime Bank mentions
+# Filter for Prime Bank mentions (for general insights)
 prime_posts_df = posts_df[posts_df['prime_mentions'] > 0].copy() if 'prime_mentions' in posts_df.columns else pd.DataFrame()
 prime_all_text_df = all_text_df[all_text_df['prime_mentions'] > 0].copy() if 'prime_mentions' in all_text_df.columns else pd.DataFrame()
 
@@ -192,7 +226,6 @@ with tab3:
 with tab4:
     st.header("🤖 AI-Powered Strategic Recommendations")
     st.write("Automatically generated advice based on an analysis of customer feedback.")
-
     if insights and insights.get('ai_recommendations'):
         recs = insights['ai_recommendations']
         
@@ -218,7 +251,6 @@ with tab4:
 with tab5:
     st.header("Posts & Comments That Need Attention")
     st.write("A prioritized list of negative or inquiry-based comments mentioning Prime Bank.")
-
     if not prime_all_text_df.empty:
         attention_df = prime_all_text_df[
             (prime_all_text_df['sentiment'] == 'Negative') |
@@ -235,8 +267,10 @@ with tab5:
             
             display_columns = ['text', 'sentiment', 'category', 'emotion', 'viral_score']
             link_col = None
-            if 'link' in attention_df.columns: link_col = 'link'
-            elif 'url' in attention_df.columns: link_col = 'url'
+            if 'link' in attention_df.columns:
+                link_col = 'link'
+            elif 'url' in attention_df.columns:
+                link_col = 'url'
 
             if link_col:
                 attention_df['Source'] = attention_df[link_col].apply(
