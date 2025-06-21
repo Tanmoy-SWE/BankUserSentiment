@@ -1,11 +1,12 @@
 # requirements.txt
+# Using pinned versions for stability on Streamlit Cloud
 
 --python-version=3.11
 
-streamlit
-pandas
-plotly
-openai
-nltk
-textblob
-python-dotenv
+streamlit==1.35.0
+pandas==2.2.2
+plotly==5.22.0
+openai==1.35.7
+nltk==3.8.1
+textblob==0.18.0.post0
+python-dotenv==1.0.1
