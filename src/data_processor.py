@@ -117,35 +117,60 @@ class DataProcessor:
         return total_mentions
     
     def analyze_sentiment(self, text):
-        """Analyze sentiment - use VADER if available, else TextBlob"""
+        """
+        Analyzes sentiment using a hybrid approach.
+        1. Uses VADER for a fast, initial assessment.
+        2. If GPT is available, uses it for a more nuanced analysis on tricky cases
+           (e.g., complaints, or where VADER is neutral but context seems negative).
+        """
         if pd.isna(text) or str(text).strip() == '':
-            return 'Neutral', 0
-        
+            return 'Neutral', 0.0
+
         text_str = str(text)
-        
+
+        # --- Step 1: Initial analysis with VADER (fast and cheap) ---
+        vader_sentiment = 'Neutral'
+        vader_polarity = 0.0
         if self.sia:
             scores = self.sia.polarity_scores(text_str)
             compound = scores['compound']
-            
+            vader_polarity = compound
             if compound >= 0.05:
-                return 'Positive', compound
+                vader_sentiment = 'Positive'
             elif compound <= -0.05:
-                return 'Negative', compound
-            else:
-                return 'Neutral', compound
+                vader_sentiment = 'Negative'
+
+        # --- Step 2: Use GPT for a more accurate, context-aware second opinion (if enabled) ---
+        is_complaint = any(word in text_str.lower() for word in ['complaint', 'problem', 'issue', 'error', 'failed', 'not working', 'terrible', 'worst', 'pathetic', 'disappointed'])
         
-        try:
-            blob = TextBlob(text_str)
-            polarity = blob.sentiment.polarity
-            
-            if polarity > 0.1:
-                return 'Positive', polarity
-            elif polarity < -0.1:
-                return 'Negative', polarity
-            else:
-                return 'Neutral', polarity
-        except Exception:
-            return 'Neutral', 0
+        # Trigger AI if it's a complaint, or if VADER is unsure (Neutral)
+        if self.use_gpt and (is_complaint or vader_sentiment == 'Neutral'):
+            try:
+                prompt = f"""
+                Analyze the sentiment of the following customer comment for a bank.
+                The context is critical. A statement like "my balance is zero" is highly negative.
+                Classify the sentiment as one of: 'Positive', 'Negative', or 'Neutral'.
+                Also provide a polarity score from -1.0 (most negative) to 1.0 (most positive).
+                Return your answer ONLY as a JSON object with keys "sentiment" and "polarity".
+
+                Customer Comment: "{text_str}"
+                """
+                response = openai.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.0,
+                    response_format={"type": "json_object"}
+                )
+                result = json.loads(response.choices[0].message.content)
+                sentiment = result.get('sentiment', 'Neutral')
+                polarity = float(result.get('polarity', 0.0))
+                return sentiment, polarity
+            except Exception as e:
+                print(f"OpenAI call failed: {e}. Falling back to VADER.")
+                return vader_sentiment, vader_polarity
+
+        # --- Step 3: Fallback to VADER if GPT is not used or triggered ---
+        return vader_sentiment, vader_polarity
     
     def detect_emotion(self, text):
         """Detect emotion in text with context"""
@@ -153,17 +178,14 @@ class DataProcessor:
             return 'Neutral', []
         
         text_lower = str(text).lower()
-        
         emotions = {
             'Joy': {'keywords': ['happy', 'excellent', 'amazing', 'great', 'wonderful', 'fantastic', 'love', 'best', 'thank you', 'appreciate']},
             'Frustration': {'keywords': ['frustrated', 'angry', 'terrible', 'horrible', 'worst', 'hate', 'annoyed', 'disappointed', 'pathetic']},
             'Confusion': {'keywords': ['confused', 'unclear', "don't understand", 'what', 'how', 'why', '?', 'help me', 'lost']},
             'Anxiety': {'keywords': ['worried', 'concern', 'anxious', 'nervous', 'scared', 'fear', 'panic', 'urgent']}
         }
-        
         emotion_scores = {}
         detected_keywords = {}
-        
         for emotion, data in emotions.items():
             keywords_found = [kw for kw in data['keywords'] if kw in text_lower]
             score = len(keywords_found)
@@ -174,16 +196,13 @@ class DataProcessor:
         if max(emotion_scores.values()) > 0:
             primary_emotion = max(emotion_scores, key=emotion_scores.get)
             return primary_emotion, detected_keywords.get(primary_emotion, [])
-        
         return 'Neutral', []
     
     def categorize_post(self, text):
         """Categorize post type with reason"""
         if pd.isna(text):
             return 'Other', 'No text content'
-        
         text_lower = str(text).lower()
-        
         if '?' in text_lower or any(phrase in text_lower for phrase in ['how do', 'what is', 'when', 'where', 'can i', 'could you', 'explain']):
             return 'Inquiry', 'Contains questions or information seeking'
         elif any(word in text_lower for word in ['complaint', 'problem', 'issue', 'error', 'failed', 'not working', 'terrible', 'worst']):
@@ -202,7 +221,6 @@ class DataProcessor:
 
         text_columns = ['text', 'content', 'message', 'review', 'comment', 'post', 'Text', 'Content', 'Post', 'Review Text']
         text_col = None
-        
         for col in text_columns:
             if col in df.columns:
                 text_col = col
@@ -221,13 +239,8 @@ class DataProcessor:
         df[['emotion', 'emotion_keywords']] = df['text'].apply(lambda x: pd.Series(self.detect_emotion(x)))
         df[['category', 'category_reason']] = df['text'].apply(lambda x: pd.Series(self.categorize_post(x)))
         
-        # --- START OF FIX ---
-        # This is the new, crucial part.
-        # It corrects the sentiment for any post that was categorized as an 'Inquiry'.
-        # This fixes the issue where questions were incorrectly marked as 'Positive'.
-        df.loc[df['category'] == 'Inquiry', 'sentiment'] = 'Neutral'
-        df.loc[df['category'] == 'Inquiry', 'polarity'] = 0.0
-        # --- END OF FIX ---
+        # NOTE: The patch for 'Inquiry' sentiment has been removed, as the new 
+        # AI-powered sentiment analysis handles this contextually.
         
         df['viral_score'] = 0
         if 'likes' in df.columns:

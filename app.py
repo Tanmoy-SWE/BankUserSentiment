@@ -1,3 +1,5 @@
+# app.py
+
 import streamlit as st
 import pandas as pd
 import os
@@ -5,6 +7,10 @@ import glob
 from src.data_processor import DataProcessor
 from src.insights_generator import InsightsGenerator
 from src.visualizations import *
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -75,15 +81,23 @@ def load_and_process_data():
     raw_posts_df = read_files(post_files + other_csv_files, 'post')
     raw_comments_df = read_files(comment_files + txt_files, 'comment')
 
-    processor = DataProcessor()
+    # --- Pass the API key from your .env file to the processors ---
+    openai_key = os.getenv("OPENAI_API_KEY")
+    
+    processor = DataProcessor(openai_api_key=openai_key)
     processed_posts_df = processor.process_all_data(raw_posts_df)
     processed_comments_df = processor.process_all_data(raw_comments_df)
     
     all_text_df = pd.concat([processed_posts_df, processed_comments_df], ignore_index=True)
     if all_text_df.empty: return pd.DataFrame(), pd.DataFrame(), None
 
-    insight_gen = InsightsGenerator()
+    insight_gen = InsightsGenerator(openai_api_key=openai_key)
     insights = insight_gen.generate_all_insights(posts_df=processed_posts_df, all_text_df=all_text_df)
+    
+    # Generate AI Recommendations
+    prime_all_text_df = all_text_df[all_text_df['prime_mentions'] > 0].copy() if 'prime_mentions' in all_text_df.columns else pd.DataFrame()
+    if not prime_all_text_df.empty:
+        insights['ai_recommendations'] = insight_gen.generate_ai_recommendations(prime_all_text_df)
     
     return processed_posts_df, all_text_df, insights
 
@@ -115,10 +129,11 @@ kpi4.metric("Engagement-Weighted Sentiment", new_metrics['Engagement-Weighted Se
 st.markdown("---")
 
 # --- Tabbed Interface ---
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "Sentiment & Virality (Posts)",
     "Emotion & Categories (All Text)",
     "Strategic Overview",
+    "🤖 AI Recommendations",
     "Action Items",
     "Full Data View"
 ])
@@ -171,11 +186,36 @@ with tab3:
         if geo_map:
             st.plotly_chart(geo_map, use_container_width=True)
         else:
-            # This message is now handled inside create_geolocation_map
             pass
 
-# --- Tab 4: Action Items (MODIFIED FOR RELIABLE LINKS) ---
+# --- Tab 4: AI Recommendations ---
 with tab4:
+    st.header("🤖 AI-Powered Strategic Recommendations")
+    st.write("Automatically generated advice based on an analysis of customer feedback.")
+
+    if insights and insights.get('ai_recommendations'):
+        recs = insights['ai_recommendations']
+        
+        st.subheader("For Customer Complaints")
+        with st.expander("Show AI Insight on Complaints", expanded=True):
+            st.markdown(f"💡 {recs.get('Complaint', 'No recommendation available.')}")
+
+        st.subheader("For Customer Suggestions")
+        with st.expander("Show AI Insight on Suggestions"):
+            st.markdown(f"💡 {recs.get('Suggestion', 'No recommendation available.')}")
+        
+        st.subheader("For Customer Praise")
+        with st.expander("Show AI Insight on Praise"):
+            st.markdown(f"💡 {recs.get('Praise', 'No recommendation available.')}")
+            
+        st.subheader("For Customer Inquiries")
+        with st.expander("Show AI Insight on Inquiries"):
+            st.markdown(f"💡 {recs.get('Inquiry', 'No recommendation available.')}")
+    else:
+        st.info("No AI recommendations could be generated. This may be due to a lack of data or a missing OpenAI API key.")
+
+# --- Tab 5: Action Items ---
+with tab5:
     st.header("Posts & Comments That Need Attention")
     st.write("A prioritized list of negative or inquiry-based comments mentioning Prime Bank.")
 
@@ -193,42 +233,25 @@ with tab4:
             )
             attention_df.sort_values(by='priority_score', ascending=False, inplace=True)
             
-            # --- START: NEW, MORE RELIABLE LINK METHOD ---
-            
-            # Define columns to display initially
             display_columns = ['text', 'sentiment', 'category', 'emotion', 'viral_score']
-            
-            # Check for a link column ('link' or 'url')
             link_col = None
-            if 'link' in attention_df.columns:
-                link_col = 'link'
-            elif 'url' in attention_df.columns:
-                link_col = 'url'
+            if 'link' in attention_df.columns: link_col = 'link'
+            elif 'url' in attention_df.columns: link_col = 'url'
 
-            # If a link column exists, create a new column with Markdown links
             if link_col:
-                # Create a new column with the full Markdown string
                 attention_df['Source'] = attention_df[link_col].apply(
                     lambda url: f"[Open Post ↗]({url})" if pd.notna(url) else "No Link"
                 )
-                # Add the new 'Source' column to the front of our display list
                 display_columns.insert(1, 'Source')
             
-            # Display the dataframe. Streamlit will automatically render the Markdown.
-            st.dataframe(
-                attention_df[display_columns],
-                use_container_width=True,
-                hide_index=True
-            )
-            # --- END: NEW, MORE RELIABLE LINK METHOD ---
-
+            st.dataframe(attention_df[display_columns], use_container_width=True, hide_index=True)
         else:
             st.success("✅ No negative comments or inquiries found that require attention.")
     else:
         st.info("No data mentioning Prime Bank to analyze for action items.")
 
-# --- Tab 5: Data View ---
-with tab5:
+# --- Tab 6: Data View ---
+with tab6:
     st.header("Explore the Raw and Processed Data")
     if not posts_df.empty:
         st.subheader("Processed Posts Data")
