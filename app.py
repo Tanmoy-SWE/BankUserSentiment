@@ -49,14 +49,15 @@ def find_text_column(df):
 @st.cache_data
 def load_and_process_data():
     DATA_DIR = 'data/uploads'
-    PERFECTED_DATA_DIR = 'perfected_data'  # New folder for perfected data
+    PERFECTED_DATA_DIR = 'perfected_data'
     if not os.path.exists(DATA_DIR):
         os.makedirs(DATA_DIR)
     if not os.path.exists(PERFECTED_DATA_DIR):
         os.makedirs(PERFECTED_DATA_DIR)
 
     all_files = glob.glob(os.path.join(DATA_DIR, '*'))
-    perfected_data_file = os.path.join(PERFECTED_DATA_DIR, 'all_posts_with_comments.txt')
+    # --- CHANGED: Look for a CSV file for perfected data to preserve links and other metadata ---
+    perfected_data_file = os.path.join(PERFECTED_DATA_DIR, 'all_posts_with_comments.csv')
 
     if not all_files and not os.path.exists(perfected_data_file):
         return pd.DataFrame(), pd.DataFrame(), None, pd.DataFrame()
@@ -95,63 +96,66 @@ def load_and_process_data():
     raw_posts_df = read_files(post_files + other_csv_files, 'post')
     raw_comments_df = read_files(comment_files + txt_files, 'comment')
 
-    # Load perfected data specifically for AI recommendations
+    # --- MODIFIED: Load perfected data from CSV for AI recommendations & Action Items ---
     perfected_df = pd.DataFrame()
     if os.path.exists(perfected_data_file):
         try:
-            with open(perfected_data_file, 'r', encoding='utf-8') as f:
-                perfected_df = pd.DataFrame({'text': [p.strip() for p in f.read().split('\n') if p.strip()]})
-            perfected_df['source_file'] = 'all_posts_with_comments.txt'
+            perfected_df = pd.read_csv(perfected_data_file, on_bad_lines='skip')
+            perfected_df['source_file'] = os.path.basename(perfected_data_file)
             perfected_df['file_type'] = 'perfected'
+            # Ensure text column is standardized
+            text_col = find_text_column(perfected_df)
+            if text_col and text_col != 'text':
+                perfected_df = perfected_df.rename(columns={text_col: 'text'})
             perfected_df = perfected_df[perfected_df['text'].notna() & (perfected_df['text'].str.strip() != '')]
         except Exception as e:
-            st.error(f"Error reading perfected data file: {e}")
+            st.error(f"Error reading perfected data file '{perfected_data_file}': {e}")
 
     # --- Pass the API key from your .env file to the processors ---
     openai_key = os.getenv("OPENAI_API_KEY")
-
     processor = DataProcessor(openai_api_key=openai_key)
+    insight_gen = InsightsGenerator(openai_api_key=openai_key)
+
+    # Process all data sets
     processed_posts_df = processor.process_all_data(raw_posts_df)
     processed_comments_df = processor.process_all_data(raw_comments_df)
     processed_perfected_df = processor.process_all_data(perfected_df) if not perfected_df.empty else pd.DataFrame()
 
+    # Create combined dataframe for general dashboard (excluding perfected data)
     all_text_df = pd.concat([processed_posts_df, processed_comments_df], ignore_index=True)
-    if all_text_df.empty:
+    if all_text_df.empty and processed_perfected_df.empty:
         return pd.DataFrame(), pd.DataFrame(), None, pd.DataFrame()
 
-    insight_gen = InsightsGenerator(openai_api_key=openai_key)
+    # Generate general insights from regular data
     insights = insight_gen.generate_all_insights(posts_df=processed_posts_df, all_text_df=all_text_df)
 
-    # Generate AI Recommendations using perfected data if available
-    prime_perfected_df = processed_perfected_df[processed_perfected_df['prime_mentions'] > 0].copy() if 'prime_mentions' in processed_perfected_df.columns and not processed_perfected_df.empty else pd.DataFrame()
-    if not prime_perfected_df.empty:
-        insights['ai_recommendations'] = insight_gen.generate_ai_recommendations(prime_perfected_df)
-    else:
-        prime_all_text_df = all_text_df[all_text_df['prime_mentions'] > 0].copy() if 'prime_mentions' in all_text_df.columns else pd.DataFrame()
-        if not prime_all_text_df.empty:
-            insights['ai_recommendations'] = insight_gen.generate_ai_recommendations(prime_all_text_df)
-        else:
-            insights['ai_recommendations'] = {}
-
+    # --- MODIFIED: Generate AI Recommendations ONLY from perfected data ---
+    insights['ai_recommendations'] = {}
+    if not processed_perfected_df.empty and 'prime_mentions' in processed_perfected_df.columns:
+        prime_perfected_df = processed_perfected_df[processed_perfected_df['prime_mentions'] > 0].copy()
+        if not prime_perfected_df.empty:
+            insights['ai_recommendations'] = insight_gen.generate_ai_recommendations(prime_perfected_df)
+        
     return processed_posts_df, all_text_df, insights, processed_perfected_df
 
 # --- Main Application ---
 st.title("🏦 Prime Bank Social Media Analytics")
 
-posts_df, all_text_df, insights, perfected_df = load_and_process_data()
+# --- MODIFIED: Renamed variable for clarity ---
+posts_df, all_text_df, insights, processed_perfected_df = load_and_process_data()
 
-if all_text_df.empty and perfected_df.empty or insights is None:
-    st.error("No data files found or processed in 'data/uploads' or 'perfected_data'. Please add CSV or TXT files.")
-    st.info("Ensure filenames contain 'post' for post data or 'comment' for comment data for best results, and ensure 'all_posts_with_comments.txt' exists in 'perfected_data' for AI recommendations.")
+if all_text_df.empty and processed_perfected_df.empty:
+    st.error("No data files found. Please add CSV/TXT files to 'data/uploads' or 'all_posts_with_comments.csv' to 'perfected_data'.")
+    st.info("The 'AI Recommendations' and 'Action Items' tabs are powered exclusively by 'perfected_data/all_posts_with_comments.csv'.")
     st.stop()
 
-# Filter for Prime Bank mentions (for general insights)
+# Filter regular data for Prime Bank mentions for general insights
 prime_posts_df = posts_df[posts_df['prime_mentions'] > 0].copy() if 'prime_mentions' in posts_df.columns else pd.DataFrame()
 prime_all_text_df = all_text_df[all_text_df['prime_mentions'] > 0].copy() if 'prime_mentions' in all_text_df.columns else pd.DataFrame()
 
-# --- KPI Section ---
+# --- KPI Section (uses general data from 'uploads' folder) ---
 st.header("📈 Prime Bank Key Performance Indicators")
-total_mentions = all_text_df['prime_mentions'].sum()
+total_mentions = all_text_df['prime_mentions'].sum() if 'prime_mentions' in all_text_df.columns else 0
 total_posts_with_mentions = len(prime_posts_df)
 new_metrics = create_summary_metrics(all_text_df)
 
@@ -172,7 +176,7 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "Full Data View"
 ])
 
-# --- Tab 1: Posts Only Analysis ---
+# --- Tab 1 to 3 use GENERAL data from 'uploads' folder ---
 with tab1:
     st.header("Sentiment & Virality Analysis (Posts Only)")
     if not prime_posts_df.empty:
@@ -190,7 +194,6 @@ with tab1:
     else:
         st.info("No posts mentioning Prime Bank were found in the data.")
 
-# --- Tab 2: All Text Analysis ---
 with tab2:
     st.header("Emotion & Category Analysis (Posts & Comments)")
     if not prime_all_text_df.empty:
@@ -204,7 +207,6 @@ with tab2:
     else:
         st.info("No text mentioning Prime Bank was found in the data.")
 
-# --- Tab 3: Strategic Overview ---
 with tab3:
     st.header("Strategic Overview")
     st.write("High-level insights into market position and geographic distribution.")
@@ -220,51 +222,56 @@ with tab3:
         if geo_map:
             st.plotly_chart(geo_map, use_container_width=True)
         else:
+            # Message is handled inside the create_geolocation_map function
             pass
 
-# --- Tab 4: AI Recommendations ---
+# --- Tab 4: AI Recommendations (uses PERFECTED data) ---
 with tab4:
     st.header("🤖 AI-Powered Strategic Recommendations")
-    st.write("Automatically generated advice based on an analysis of customer feedback.")
-    if insights and insights.get('ai_recommendations'):
+    st.info("These recommendations are generated **exclusively** from the curated data in `perfected_data/all_posts_with_comments.csv`.")
+    if insights and 'ai_recommendations' in insights and insights['ai_recommendations']:
         recs = insights['ai_recommendations']
-        
         st.subheader("For Customer Complaints")
         with st.expander("Show AI Insight on Complaints", expanded=True):
-            st.markdown(f"💡 {recs.get('Complaint', 'No recommendation available.')}")
+            st.markdown(f"💡 {recs.get('Complaint', 'No specific recommendation available.')}")
 
         st.subheader("For Customer Suggestions")
         with st.expander("Show AI Insight on Suggestions"):
-            st.markdown(f"💡 {recs.get('Suggestion', 'No recommendation available.')}")
+            st.markdown(f"💡 {recs.get('Suggestion', 'No specific recommendation available.')}")
         
         st.subheader("For Customer Praise")
         with st.expander("Show AI Insight on Praise"):
-            st.markdown(f"💡 {recs.get('Praise', 'No recommendation available.')}")
+            st.markdown(f"💡 {recs.get('Praise', 'No specific recommendation available.')}")
             
         st.subheader("For Customer Inquiries")
         with st.expander("Show AI Insight on Inquiries"):
-            st.markdown(f"💡 {recs.get('Inquiry', 'No recommendation available.')}")
+            st.markdown(f"💡 {recs.get('Inquiry', 'No specific recommendation available.')}")
     else:
-        st.info("No AI recommendations could be generated. This may be due to a lack of data or a missing OpenAI API key.")
+        st.warning("No AI recommendations could be generated. This requires a valid `perfected_data/all_posts_with_comments.csv` file with relevant data and a configured OpenAI API key.")
 
-# --- Tab 5: Action Items ---
+# --- Tab 5: Action Items (uses PERFECTED data) ---
 with tab5:
     st.header("Posts & Comments That Need Attention")
-    st.write("A prioritized list of negative or inquiry-based comments mentioning Prime Bank.")
-    if not prime_all_text_df.empty:
-        attention_df = prime_all_text_df[
-            (prime_all_text_df['sentiment'] == 'Negative') |
-            (prime_all_text_df['category'].isin(['Complaint', 'Inquiry']))
+    st.info("This prioritized list is generated **exclusively** from the curated data in `perfected_data/all_posts_with_comments.csv`.")
+    
+    if not processed_perfected_df.empty and 'prime_mentions' in processed_perfected_df.columns:
+        prime_perfected_df = processed_perfected_df[processed_perfected_df['prime_mentions'] > 0].copy()
+        
+        attention_df = prime_perfected_df[
+            (prime_perfected_df['sentiment'] == 'Negative') | 
+            (prime_perfected_df['category'].isin(['Complaint', 'Inquiry']))
         ].copy()
 
         if not attention_df.empty:
+            # Calculate priority score
             attention_df['priority_score'] = (
                 (attention_df['sentiment'] == 'Negative') * 2 +
                 (attention_df['category'] == 'Complaint') * 1.5 +
                 (attention_df['category'] == 'Inquiry') * 1
             )
-            attention_df.sort_values(by='priority_score', ascending=False, inplace=True)
+            attention_df.sort_values(by=['priority_score', 'viral_score'], ascending=[False, False], inplace=True)
             
+            # Prepare display columns and add clickable source link
             display_columns = ['text', 'sentiment', 'category', 'emotion', 'viral_score']
             link_col = None
             if 'link' in attention_df.columns:
@@ -273,25 +280,31 @@ with tab5:
                 link_col = 'url'
 
             if link_col:
+                # This part now works because the source is a CSV with a link column
                 attention_df['Source'] = attention_df[link_col].apply(
-                    lambda url: f"[Open Post ↗]({url})" if pd.notna(url) else "No Link"
+                    lambda url: f"[Open Post ↗]({url})" if pd.notna(url) and str(url).startswith('http') else "No Link"
                 )
                 display_columns.insert(1, 'Source')
             
             st.dataframe(attention_df[display_columns], use_container_width=True, hide_index=True)
         else:
-            st.success("✅ No negative comments or inquiries found that require attention.")
+            st.success("✅ No negative comments or inquiries found in the perfected data that require attention.")
     else:
-        st.info("No data mentioning Prime Bank to analyze for action items.")
+        st.warning("No data found in `perfected_data/all_posts_with_comments.csv` to analyze for action items.")
 
-# --- Tab 6: Data View ---
+# --- Tab 6: Data View (shows both general and perfected data separately) ---
 with tab6:
     st.header("Explore the Raw and Processed Data")
+    
+    if not processed_perfected_df.empty:
+        st.subheader("Processed Perfected Data (from `perfected_data`)")
+        st.dataframe(processed_perfected_df.head(100))
+
     if not posts_df.empty:
-        st.subheader("Processed Posts Data")
+        st.subheader("Processed Posts Data (from `data/uploads`)")
         st.dataframe(posts_df.head(100))
 
     comments_df = all_text_df[all_text_df['file_type'] == 'comment'] if 'file_type' in all_text_df.columns else pd.DataFrame()
     if not comments_df.empty:
-        st.subheader("Processed Comments & Reviews Data")
+        st.subheader("Processed Comments & Reviews Data (from `data/uploads`)")
         st.dataframe(comments_df.head(100))

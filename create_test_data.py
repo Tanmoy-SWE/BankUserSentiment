@@ -1,15 +1,16 @@
-# create_test.py
-
 import pandas as pd
 import os
 
-# --- Create a directory for uploads if it doesn't exist ---
+# --- Create directories if they don't exist ---
 UPLOAD_DIR = 'data/uploads'
+PERFECTED_DIR = 'perfected_data'
 if not os.path.exists(UPLOAD_DIR):
     os.makedirs(UPLOAD_DIR)
+if not os.path.exists(PERFECTED_DIR):
+    os.makedirs(PERFECTED_DIR)
 
-# --- Create sample POSTS CSV data with more specific examples ---
-sample_data = pd.DataFrame({
+# --- 1. Create sample POSTS CSV data for the GENERAL dashboard ---
+sample_posts = pd.DataFrame({
     'text': [
         'Prime Bank has the best customer service! Love their mobile app QR payment feature.',
         'Worst experience at Prime Bank. My credit card was declined for no reason and support was useless!',
@@ -25,7 +26,7 @@ sample_data = pd.DataFrame({
         'Comparing BRAC Bank and Prime Bank for a new account.',
         'City Bank has a nice app, but their service is slow.',
         'DBBL needs to improve their network coverage.',
-        'My account balance is zero and I did not authorize these transactions! Panicking!', # Good test for hybrid sentiment
+        'My account balance is zero and I did not authorize these transactions! Panicking!',
     ],
     'date': pd.to_datetime(['2024-01-01', '2024-01-02', '2024-01-03', '2024-01-04', '2024-01-05',
                             '2024-01-06', '2024-01-07', '2024-01-08', '2024-01-09', '2024-01-10',
@@ -38,22 +39,28 @@ sample_data = pd.DataFrame({
                  'Dhaka', 'Sylhet', 'Dhaka'],
     'link': [f'https://social.example.com/posts/{i}' for i in range(1, 16)]
 })
-
-# Save as a file with "post" in the name
 posts_filepath = os.path.join(UPLOAD_DIR, 'test_social_media_posts.csv')
-sample_data.to_csv(posts_filepath, index=False)
-print(f"✅ Created {posts_filepath}")
+sample_posts.to_csv(posts_filepath, index=False)
+print(f"✅ Created general data file: {posts_filepath}")
 
-# --- Create sample COMMENTS TXT file ---
-reviews = """Prime Bank provides exceptional service. Highly recommend!
+# --- 2. Create sample COMMENTS TXT file for the GENERAL dashboard ---
+reviews_text = """Prime Bank provides exceptional service. Highly recommend!
 Terrible experience with Prime Bank customer support. They never solve the actual problem.
 The Prime Bank mobile app keeps crashing whenever I try to check my balance. Please fix this!
 Love the new features in Prime Bank online banking, especially the budget tracker.
 Why does Prime Bank charge so many fees? It feels like a rip-off.
 I suggest you add a dark mode to the app. It would save battery.
 BRAC Bank is also a good option for students."""
-
 comments_filepath = os.path.join(UPLOAD_DIR, 'test_review_comments.txt')
 with open(comments_filepath, 'w') as f:
-    f.write(reviews)
-print(f"✅ Created {comments_filepath}")
+    f.write(reviews_text)
+print(f"✅ Created general data file: {comments_filepath}")
+
+
+# --- 3. Create the PERFECTED CSV data file for AI & ACTION ITEMS tabs ---
+# For this example, we'll just use the same sample posts data. In a real scenario,
+# this file would be a manually curated and cleaned version of your best data.
+perfected_filepath = os.path.join(PERFECTED_DIR, 'all_posts_with_comments.csv')
+sample_posts.to_csv(perfected_filepath, index=False)
+print(f"✅ Created perfected data file: {perfected_filepath}")
+print("\n✨ All test files created successfully! You can now run 'streamlit run app.py'. ✨")
