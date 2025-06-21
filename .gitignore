@@ -9,4 +9,7 @@ __pycache__/
 .env
 
 # You can also ignore the local Streamlit config if you have one
-.streamlit/config.toml
+.streamlit/config.tomlvenv/
+__pycache__/
+*.pyc
+.env
