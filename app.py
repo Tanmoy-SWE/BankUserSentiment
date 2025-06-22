@@ -113,7 +113,7 @@ def load_and_process_data():
             st.error(f"Error reading perfected data file '{perfected_data_file}': {e}")
 
     # --- Pass the API key from your .env file to the processors ---
-    openai_key = os.getenv("OPENAI_API_KEY")
+    openai_key = "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"
     processor = DataProcessor(openai_api_key=openai_key)
     insight_gen = InsightsGenerator(openai_api_key=openai_key)
 
