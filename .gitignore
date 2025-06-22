@@ -1,16 +1,1 @@
-# .gitignore
-
-# Ignore the backup folder with real data
-_real_data_backup/
-
-# Ignore Python cache and environment files
-__pycache__/
-*.pyc
-.env
-
-# You can also ignore the local Streamlit config if you have one
-.streamlit/config.tomlvenv/
-__pycache__/
-*.pyc
-.env
 venv/
