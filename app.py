@@ -1,3 +1,4 @@
+#app.py
 import streamlit as st
 import pandas as pd
 import os
@@ -46,7 +47,7 @@ def find_text_column(df):
     return None
 
 # --- Caching for Performance ---
-@st.cache_data
+# @st.cache_data  # Temporarily disabled to fix API key issue
 def load_and_process_data():
     DATA_DIR = 'data/uploads'
     PERFECTED_DATA_DIR = 'perfected_data'
@@ -141,6 +142,12 @@ def load_and_process_data():
 # --- Main Application ---
 st.title("🏦 Prime Bank Social Media Analytics")
 
+# Manual API key input if not found in environment
+if not os.getenv("OPENAI_API_KEY"):
+    api_key = st.sidebar.text_input("🔑 Enter OpenAI API Key:", type="password", help="Key not found in environment")
+    if api_key:
+        os.environ["OPENAI_API_KEY"] = api_key
+
 # --- MODIFIED: Renamed variable for clarity ---
 posts_df, all_text_df, insights, processed_perfected_df = load_and_process_data()
 
@@ -228,7 +235,7 @@ with tab3:
 # --- Tab 4: AI Recommendations (uses PERFECTED data) ---
 with tab4:
     st.header("🤖 AI-Powered Strategic Recommendations")
-    st.info("These recommendations are generated **exclusively** from the curated data in `perfected_data/all_posts_with_comments.csv`.")
+    st.info("These recommendations are generated exclusively from the curated data in `perfected_data/all_posts_with_comments.csv`.")
     if insights and 'ai_recommendations' in insights and insights['ai_recommendations']:
         recs = insights['ai_recommendations']
         st.subheader("For Customer Complaints")
@@ -250,9 +257,10 @@ with tab4:
         st.warning("No AI recommendations could be generated. This requires a valid `perfected_data/all_posts_with_comments.csv` file with relevant data and a configured OpenAI API key.")
 
 # --- Tab 5: Action Items (uses PERFECTED data) ---
+# --- Tab 5: Action Items (uses PERFECTED data) ---
 with tab5:
     st.header("Posts & Comments That Need Attention")
-    st.info("This prioritized list is generated **exclusively** from the curated data in `perfected_data/all_posts_with_comments.csv`.")
+    st.info("This prioritized list is generated exclusively from the curated data in `perfected_data/all_posts_with_comments.csv`.")
     
     if not processed_perfected_df.empty and 'prime_mentions' in processed_perfected_df.columns:
         prime_perfected_df = processed_perfected_df[processed_perfected_df['prime_mentions'] > 0].copy()
@@ -280,9 +288,11 @@ with tab5:
                 link_col = 'url'
 
             if link_col:
-                # This part now works because the source is a CSV with a link column
+                # Check if links are real or just placeholders
                 attention_df['Source'] = attention_df[link_col].apply(
-                    lambda url: f"[Open Post ↗]({url})" if pd.notna(url) and str(url).startswith('http') else "No Link"
+                    lambda url: "Customer Post" if pd.notna(url) and 'example.com' in str(url) 
+                    else (f"[Open Post ↗]({url})" if pd.notna(url) and str(url).startswith('http') 
+                    else "Direct Feedback")
                 )
                 display_columns.insert(1, 'Source')
             
