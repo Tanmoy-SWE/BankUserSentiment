@@ -2,6 +2,7 @@
 import pandas as pd
 import os
 
+
 # --- Create directories if they don't exist ---
 UPLOAD_DIR = 'data/uploads'
 PERFECTED_DIR = 'perfected_data'

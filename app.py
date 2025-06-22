@@ -7,6 +7,7 @@ from src.data_processor import DataProcessor
 from src.insights_generator import InsightsGenerator
 from src.visualizations import *
 from dotenv import load_dotenv
+from parse_raw_data import run_parser
 
 # Load environment variables from .env file
 load_dotenv()
@@ -51,6 +52,7 @@ def find_text_column(df):
 def load_and_process_data():
     DATA_DIR = 'data/uploads'
     PERFECTED_DATA_DIR = 'perfected_data'
+    run_parser()
     if not os.path.exists(DATA_DIR):
         os.makedirs(DATA_DIR)
     if not os.path.exists(PERFECTED_DATA_DIR):
