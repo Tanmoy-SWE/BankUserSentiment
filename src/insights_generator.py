@@ -17,7 +17,7 @@ class InsightsGenerator:
     def __init__(self, openai_api_key=None):
         self.insights = {}
         self.client = None
-        if openai_api_key and OPENAI_AVAILABLE:
+        if openai_api_key:
             os.environ["OPENAI_API_KEY"] = openai_api_key
             openai.api_key = openai_api_key
             self.client = True
