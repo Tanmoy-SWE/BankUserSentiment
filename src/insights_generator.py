@@ -5,7 +5,7 @@ import re
 
 # ### CHANGED: Import the new OpenAI client ###
 try:
-    from openai import OpenAI
+    from openai import OpenAI, AsyncOpenAI
     OPENAI_AVAILABLE = True
 except ImportError:
     OPENAI_AVAILABLE = False
@@ -14,12 +14,16 @@ class InsightsGenerator:
     """
     Analyzes processed data to generate rich, qualitative insights for the dashboard.
     """
+import os
+from openai import OpenAI
+
+class InsightsGenerator:
     def __init__(self, openai_api_key=None):
         self.insights = {}
-        self.client = None # ### CHANGED: Initialize client as None ###
+        self.client = None
         if openai_api_key and OPENAI_AVAILABLE:
-            # ### CHANGED: Create an OpenAI client instance ###
-            self.client = OpenAI(api_key=openai_api_key)
+            os.environ["OPENAI_API_KEY"] = openai_api_key
+            self.client = OpenAI()
 
     # ... (the other functions are fine) ...
     def generate_all_insights(self, posts_df, all_text_df):
