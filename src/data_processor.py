@@ -6,7 +6,7 @@ import streamlit as st
 
 # ### CHANGED: Import the new OpenAI client ###
 try:
-    from openai import OpenAI
+    import openai
     OPENAI_AVAILABLE = True
 except ImportError:
     OPENAI_AVAILABLE = False
@@ -35,7 +35,7 @@ class DataProcessor:
         self.use_gpt = False
         if openai_api_key and OPENAI_AVAILABLE:
             # ### CHANGED: Create an OpenAI client instance ###
-            self.client = OpenAI(api_key=openai_api_key)
+            openai.api_key = openai_api_key
             self.use_gpt = True
             
         # Banking patterns
@@ -100,7 +100,7 @@ class DataProcessor:
                 Customer Comment: "{text_str}"
                 """
                 # ### CHANGED: Use the new client to make the API call ###
-                response = self.client.chat.completions.create(
+                response = openai.ChatCompletion.create(
                     model="gpt-3.5-turbo",
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.0,
