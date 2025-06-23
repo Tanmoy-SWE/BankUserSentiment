@@ -4,11 +4,7 @@ from collections import Counter
 import re
 
 # ### CHANGED: Import the new OpenAI client ###
-try:
-    from openai import OpenAI, AsyncOpenAI
-    OPENAI_AVAILABLE = True
-except ImportError:
-    OPENAI_AVAILABLE = False
+import openai
 
 class InsightsGenerator:
     """
@@ -23,7 +19,8 @@ class InsightsGenerator:
         self.client = None
         if openai_api_key and OPENAI_AVAILABLE:
             os.environ["OPENAI_API_KEY"] = openai_api_key
-            self.client = OpenAI()
+            openai.api_key = openai_api_key
+            self.client = True
 
     # ... (the other functions are fine) ...
     def generate_all_insights(self, posts_df, all_text_df):
@@ -79,7 +76,7 @@ class InsightsGenerator:
             return "OpenAI API key not configured. Cannot generate the AI recommendations."
         try:
             # ### CHANGED: Use the new client to make the API call ###
-            response = self.client.chat.completions.create(
+            response = openai.ChatCompletion.create(
                 model="gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": "You are a sharp, concise banking strategy analyst. Your goal is to provide actionable advice based on customer feedback."},
