@@ -174,11 +174,11 @@ kpi4.metric("Engagement-Weighted Sentiment", new_metrics['Engagement-Weighted Se
 st.markdown("---")
 
 # --- Tabbed Interface ---
-tab1, tab2, tab3, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "Sentiment & Virality (Posts)",
     "Emotion & Categories (All Text)",
     "Strategic Overview",
-    # "🤖 AI Recommendations",
+    "🤖 AI Recommendations",
     "Action Items",
     "Full Data View"
 ])
