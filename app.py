@@ -234,29 +234,29 @@ with tab3:
             pass
 
 # --- Tab 4: AI Recommendations ---
-# with tab4:
-#     st.header("🤖 AI-Powered Strategic Recommendations")
-#     st.write("Automatically generated advice based on an analysis of customer feedback.")
-#     if insights and insights.get('ai_recommendations'):
-#         recs = insights['ai_recommendations']
+with tab4:
+    st.header("🤖 AI-Powered Strategic Recommendations")
+    st.write("Automatically generated advice based on an analysis of customer feedback.")
+    if insights and insights.get('ai_recommendations'):
+        recs = insights['ai_recommendations']
         
-#         st.subheader("For Customer Complaints")
-#         with st.expander("Show AI Insight on Complaints", expanded=True):
-#             st.markdown(f"💡 {recs.get('Complaint', 'No recommendation available.')}")
+        st.subheader("For Customer Complaints")
+        with st.expander("Show AI Insight on Complaints", expanded=True):
+            st.markdown(f"💡 {recs.get('Complaint', 'No recommendation available.')}")
 
-#         st.subheader("For Customer Suggestions")
-#         with st.expander("Show AI Insight on Suggestions"):
-#             st.markdown(f"💡 {recs.get('Suggestion', 'No recommendation available.')}")
+        st.subheader("For Customer Suggestions")
+        with st.expander("Show AI Insight on Suggestions"):
+            st.markdown(f"💡 {recs.get('Suggestion', 'No recommendation available.')}")
         
-#         st.subheader("For Customer Praise")
-#         with st.expander("Show AI Insight on Praise"):
-#             st.markdown(f"💡 {recs.get('Praise', 'No recommendation available.')}")
+        st.subheader("For Customer Praise")
+        with st.expander("Show AI Insight on Praise"):
+            st.markdown(f"💡 {recs.get('Praise', 'No recommendation available.')}")
             
-#         st.subheader("For Customer Inquiries")
-#         with st.expander("Show AI Insight on Inquiries"):
-#             st.markdown(f"💡 {recs.get('Inquiry', 'No recommendation available.')}")
-#     else:
-#         st.info("No AI recommendations could be generated. This may be due to a lack of data or a missing OpenAI API key.")
+        st.subheader("For Customer Inquiries")
+        with st.expander("Show AI Insight on Inquiries"):
+            st.markdown(f"💡 {recs.get('Inquiry', 'No recommendation available.')}")
+    else:
+        st.info("No AI recommendations could be generated. This may be due to a lack of data or a missing OpenAI API key.")
 
 # --- Tab 5: Action Items ---
 with tab5:
